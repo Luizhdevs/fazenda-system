@@ -26,7 +26,7 @@ export default function Novo() {
   const [sucesso, setSucesso] = useState(false)
   const hoje = new Date().toISOString().split('T')[0]
 
-  const [venda,   setVenda]   = useState({ produto: '', quantidade: '', preco_unitario: '', cliente_id: '', data_venda: hoje })
+  const [venda,   setVenda]   = useState({ produto: '', produto_id: '', quantidade: '', preco_unitario: '', cliente_id: '', data_venda: hoje })
   const [compra,  setCompra]  = useState({ insumo_id: '', fornecedor: '', quantidade: '', preco_unitario: '', data_compra: hoje })
   const [receita, setReceita] = useState({ categoria: 'leite', valor: '', descricao: '', origem: '', data_receita: hoje })
   const [despesa, setDespesa] = useState({ categoria: 'funcionario', valor: '', descricao: '', data_despesa: hoje })
@@ -38,7 +38,7 @@ export default function Novo() {
     })
     api.get('/produtos').then(r => {
       setProdutos(r.data)
-      if (r.data.length > 0) setVenda(v => ({ ...v, produto: r.data[0].nome }))
+      if (r.data.length > 0) setVenda(v => ({ ...v, produto: r.data[0].nome, produto_id: r.data[0].id }))
     })
     api.get('/clientes').then(r => setClientes(r.data))
     api.get('/fornecedores').then(r => setFornecedores(r.data))
@@ -56,6 +56,10 @@ export default function Novo() {
           })
         }
         setFiado(false)
+        setVenda(v => ({ ...v, quantidade: '', preco_unitario: '', cliente_id: '' }))
+        setSucesso(true)
+        setTimeout(() => setSucesso(false), 3000)
+        return
       }
       if (tipo === 'compra')  await api.post('/lancamentos/compra', compra)
       if (tipo === 'receita') await api.post('/lancamentos/receita', receita)
@@ -68,7 +72,8 @@ export default function Novo() {
       setDespesa(d => ({ ...d, valor: '', descricao: '' }))
       setTimeout(() => setSucesso(false), 3000)
     } catch (err) {
-      alert('Erro ao salvar: ' + err.message)
+      const msg = err.response?.data?.error || err.message
+      alert('Erro: ' + msg)
     }
   }
 
@@ -102,8 +107,11 @@ export default function Novo() {
       {/* Venda */}
       {tipo === 'venda' && <>
         {field('Produto',
-          <select value={venda.produto} onChange={e => setVenda({...venda, produto: e.target.value})} style={S.select}>
-            {produtos.map(p => <option key={p.id} value={p.nome}>{p.nome} ({p.unidade})</option>)}
+          <select value={venda.produto_id} onChange={e => {
+            const p = produtos.find(x => x.id === e.target.value)
+            setVenda({...venda, produto_id: e.target.value, produto: p?.nome || ''})
+          }} style={S.select}>
+            {produtos.map(p => <option key={p.id} value={p.id}>{p.nome} ({p.unidade})</option>)}
           </select>
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>

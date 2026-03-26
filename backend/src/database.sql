@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS compras (
   criado_em TIMESTAMP DEFAULT NOW()
 );
 
--- Estoque atual de cada insumo
+-- Estoque atual de cada insumo (custo médio ponderado)
 CREATE TABLE IF NOT EXISTS estoques (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   insumo_id UUID UNIQUE REFERENCES insumos(id),
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS estoques (
   atualizado_em TIMESTAMP DEFAULT NOW()
 );
 
--- Produções de ração
+-- Produções de ração (legado)
 CREATE TABLE IF NOT EXISTS producoes_racao (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   data_producao DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS producoes_racao (
   criado_em TIMESTAMP DEFAULT NOW()
 );
 
--- Insumos usados em cada produção
+-- Insumos usados em cada produção (legado)
 CREATE TABLE IF NOT EXISTS itens_producao (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   producao_id UUID REFERENCES producoes_racao(id) ON DELETE CASCADE,
@@ -56,10 +56,47 @@ CREATE TABLE IF NOT EXISTS itens_producao (
   custo_parcial DECIMAL(10,2) GENERATED ALWAYS AS (quantidade_usada * custo_unitario) STORED
 );
 
--- Vendas (ração, fubá, milho em saco, outros)
+-- Produtos finais (ração, fubá, banana, mandioca, etc.)
+CREATE TABLE IF NOT EXISTS produtos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome VARCHAR(150) NOT NULL,
+  unidade VARCHAR(20) NOT NULL DEFAULT 'unidade',
+  ativo BOOLEAN DEFAULT true,
+  criado_em TIMESTAMP DEFAULT NOW()
+);
+
+-- Ficha técnica: ingredientes de cada produto
+-- Um ingrediente pode ser um insumo OU outro produto (ex: fubá entra na ração)
+CREATE TABLE IF NOT EXISTS produto_insumos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  produto_id UUID NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+  insumo_id UUID REFERENCES insumos(id),                   -- ingrediente do tipo insumo
+  componente_produto_id UUID REFERENCES produtos(id),       -- ingrediente do tipo produto
+  quantidade_por_unidade DECIMAL(10,4) NOT NULL,
+  CONSTRAINT chk_componente CHECK (
+    (insumo_id IS NOT NULL AND componente_produto_id IS NULL) OR
+    (insumo_id IS NULL AND componente_produto_id IS NOT NULL)
+  ),
+  UNIQUE(produto_id, insumo_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS produto_insumos_componente_idx
+  ON produto_insumos(produto_id, componente_produto_id)
+  WHERE componente_produto_id IS NOT NULL;
+
+-- Estoque de produtos acabados (sacos de ração, kg de banana colhida, etc.)
+CREATE TABLE IF NOT EXISTS estoque_produtos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  produto_id UUID UNIQUE NOT NULL REFERENCES produtos(id),
+  quantidade_atual DECIMAL(10,2) NOT NULL DEFAULT 0,
+  atualizado_em TIMESTAMP DEFAULT NOW()
+);
+
+-- Vendas
 CREATE TABLE IF NOT EXISTS vendas (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  produto VARCHAR(100) NOT NULL, -- 'racao', 'fuba', 'milho_saco', 'outro'
+  produto VARCHAR(100) NOT NULL,
+  produto_id UUID REFERENCES produtos(id),   -- vínculo com produto cadastrado
   quantidade DECIMAL(10,2) NOT NULL,
   preco_unitario DECIMAL(10,2) NOT NULL,
   preco_total DECIMAL(10,2) GENERATED ALWAYS AS (quantidade * preco_unitario) STORED,
@@ -94,12 +131,42 @@ CREATE TABLE IF NOT EXISTS despesas (
   criado_em TIMESTAMP DEFAULT NOW()
 );
 
+-- Clientes
+CREATE TABLE IF NOT EXISTS clientes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome VARCHAR(150) NOT NULL,
+  telefone VARCHAR(20),
+  observacao TEXT,
+  criado_em TIMESTAMP DEFAULT NOW()
+);
+
+-- Débitos de clientes (fiado)
+CREATE TABLE IF NOT EXISTS debitos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cliente_id UUID NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  descricao TEXT NOT NULL,
+  valor DECIMAL(10,2) NOT NULL,
+  data_debito DATE NOT NULL DEFAULT CURRENT_DATE,
+  pago BOOLEAN DEFAULT false,
+  data_pagamento DATE,
+  criado_em TIMESTAMP DEFAULT NOW()
+);
+
+-- Fornecedores
+CREATE TABLE IF NOT EXISTS fornecedores (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome VARCHAR(150) NOT NULL,
+  telefone VARCHAR(20),
+  observacao TEXT,
+  criado_em TIMESTAMP DEFAULT NOW()
+);
+
 -- ==============================================
--- Dados iniciais de insumos
+-- Dados iniciais
 -- ==============================================
 INSERT INTO insumos (nome, tipo, unidade) VALUES
   ('Milho a granel', 'graos', 'kg'),
-  ('Milho em saco', 'graos', 'saco'),
-  ('Soja', 'proteina', 'kg'),
-  ('Mineral', 'mineral', 'kg')
+  ('Milho em saco',  'graos', 'saco'),
+  ('Soja',           'proteina', 'kg'),
+  ('Mineral',        'mineral', 'kg')
 ON CONFLICT DO NOTHING;

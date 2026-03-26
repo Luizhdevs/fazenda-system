@@ -64,16 +64,63 @@ router.get('/', async (req, res) => {
 
 // POST /api/lancamentos/venda
 router.post('/venda', async (req, res) => {
-  const { produto, quantidade, preco_unitario, custo_unitario, cliente, data_venda, observacao } = req.body;
+  const { produto, produto_id, quantidade, preco_unitario, custo_unitario, cliente, data_venda, observacao } = req.body;
+
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      `INSERT INTO vendas (produto, quantidade, preco_unitario, custo_unitario, cliente, data_venda, observacao)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [produto, quantidade, preco_unitario, custo_unitario || 0, cliente, data_venda, observacao]
+    await client.query('BEGIN');
+
+    // Debita do estoque de produto (se produto_id informado)
+    let custoTotal = parseFloat(custo_unitario || 0);
+    if (produto_id) {
+      const qtdVenda = parseFloat(quantidade);
+
+      // Verifica saldo em estoque_produtos
+      const saldoProduto = await client.query(
+        'SELECT COALESCE(quantidade_atual, 0) as quantidade_atual FROM estoque_produtos WHERE produto_id = $1',
+        [produto_id]
+      );
+      const saldoAtual = parseFloat(saldoProduto.rows[0]?.quantidade_atual || 0);
+
+      if (saldoAtual < qtdVenda) {
+        await client.query('ROLLBACK');
+        const nomeProd = await client.query('SELECT nome FROM produtos WHERE id = $1', [produto_id]);
+        return res.status(400).json({
+          error: `Estoque insuficiente de "${nomeProd.rows[0]?.nome}": disponível ${saldoAtual.toFixed(2)}, necessário ${qtdVenda.toFixed(2)}. Registre uma produção antes de vender.`
+        });
+      }
+
+      // Debita do estoque de produto
+      await client.query(
+        `UPDATE estoque_produtos SET quantidade_atual = quantidade_atual - $1, atualizado_em = NOW()
+         WHERE produto_id = $2`,
+        [qtdVenda, produto_id]
+      );
+
+      // Pega custo médio da ficha técnica para registrar na venda
+      const custoFicha = await client.query(
+        `SELECT COALESCE(SUM(pi.quantidade_por_unidade * COALESCE(e.custo_medio, 0)), 0) as custo
+         FROM produto_insumos pi
+         LEFT JOIN estoques e ON e.insumo_id = pi.insumo_id
+         WHERE pi.produto_id = $1`,
+        [produto_id]
+      );
+      custoTotal = parseFloat(custoFicha.rows[0]?.custo || 0);
+    }
+
+    const result = await client.query(
+      `INSERT INTO vendas (produto, produto_id, quantidade, preco_unitario, custo_unitario, cliente, data_venda, observacao)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [produto, produto_id || null, quantidade, preco_unitario, custoTotal, cliente, data_venda, observacao]
     );
+
+    await client.query('COMMIT');
     res.status(201).json(result.rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

@@ -2,16 +2,17 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
 
-// GET /api/estoques
+// GET /api/estoques — lista todos os insumos com saldo (mesmo os zerados)
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT e.id, i.nome, i.tipo, i.unidade,
-              e.quantidade_atual, e.custo_medio,
-              (e.quantidade_atual * e.custo_medio) as valor_total,
+      `SELECT i.id as insumo_id, i.nome, i.tipo, i.unidade,
+              COALESCE(e.quantidade_atual, 0) as quantidade_atual,
+              COALESCE(e.custo_medio, 0) as custo_medio,
+              COALESCE(e.quantidade_atual * e.custo_medio, 0) as valor_total,
               e.atualizado_em
-       FROM estoques e
-       JOIN insumos i ON e.insumo_id = i.id
+       FROM insumos i
+       LEFT JOIN estoques e ON e.insumo_id = i.id
        ORDER BY i.nome`
     );
     res.json(result.rows);
@@ -20,13 +21,263 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/estoques/insumos (lista insumos para os selects)
-router.get('/insumos', async (req, res) => {
+// POST /api/estoques/ajuste — entrada ou saída manual de insumo
+router.post('/ajuste', async (req, res) => {
+  const { insumo_id, tipo, quantidade, preco_unitario, observacao } = req.body;
+
+  if (!insumo_id || !tipo || !quantidade) {
+    return res.status(400).json({ error: 'insumo_id, tipo e quantidade são obrigatórios' });
+  }
+
+  const client = await pool.connect();
   try {
-    const result = await pool.query('SELECT * FROM insumos ORDER BY nome');
+    await client.query('BEGIN');
+
+    const estoqueAtual = await client.query(
+      'SELECT quantidade_atual, custo_medio FROM estoques WHERE insumo_id = $1',
+      [insumo_id]
+    );
+
+    const qtdAtual = parseFloat(estoqueAtual.rows[0]?.quantidade_atual || 0);
+    const custoAtual = parseFloat(estoqueAtual.rows[0]?.custo_medio || 0);
+    const qtd = parseFloat(quantidade);
+    const preco = parseFloat(preco_unitario || 0);
+
+    let novaQtd, novoCusto;
+
+    if (tipo === 'entrada') {
+      if (preco <= 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Preço unitário é obrigatório para entradas' });
+      }
+      novaQtd = qtdAtual + qtd;
+      novoCusto = (qtdAtual * custoAtual + qtd * preco) / novaQtd;
+    } else {
+      if (qtd > qtdAtual) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Quantidade insuficiente em estoque' });
+      }
+      novaQtd = qtdAtual - qtd;
+      novoCusto = custoAtual;
+    }
+
+    await client.query(
+      `INSERT INTO estoques (insumo_id, quantidade_atual, custo_medio)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (insumo_id) DO UPDATE SET
+         quantidade_atual = $2, custo_medio = $3, atualizado_em = NOW()`,
+      [insumo_id, novaQtd, novoCusto]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ insumo_id, tipo, quantidade: novaQtd, custo_medio: novoCusto });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ─── Estoque de Produtos ──────────────────────────────────────────────────────
+
+// GET /api/estoques/produtos — saldo de todos os produtos (mesmo os zerados)
+router.get('/produtos', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT p.id as produto_id, p.nome, p.unidade,
+              COALESCE(ep.quantidade_atual, 0) as quantidade_atual,
+              ep.atualizado_em,
+              -- custo médio calculado pela ficha técnica
+              COALESCE((
+                SELECT SUM(pi.quantidade_por_unidade * COALESCE(e.custo_medio, 0))
+                FROM produto_insumos pi
+                LEFT JOIN estoques e ON e.insumo_id = pi.insumo_id
+                WHERE pi.produto_id = p.id
+              ), 0) as custo_unitario,
+              -- capacidade máxima produzível com insumos atuais
+              COALESCE((
+                SELECT MIN(FLOOR(COALESCE(e.quantidade_atual, 0) / NULLIF(pi.quantidade_por_unidade, 0)))
+                FROM produto_insumos pi
+                LEFT JOIN estoques e ON e.insumo_id = pi.insumo_id
+                WHERE pi.produto_id = p.id
+              ), 0) as capacidade_producao,
+              -- tem ficha técnica?
+              EXISTS(SELECT 1 FROM produto_insumos WHERE produto_id = p.id) as tem_ficha
+       FROM produtos p
+       LEFT JOIN estoque_produtos ep ON ep.produto_id = p.id
+       WHERE p.ativo = true
+       ORDER BY p.nome`
+    );
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/estoques/produtos/entrada — entrada manual (colheita, doação, ajuste) sem debitar ingredientes
+router.post('/produtos/entrada', async (req, res) => {
+  const { produto_id, quantidade, custo_unitario, observacao } = req.body;
+  if (!produto_id || !quantidade) {
+    return res.status(400).json({ error: 'produto_id e quantidade são obrigatórios' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const qtd   = parseFloat(quantidade);
+    const custo = parseFloat(custo_unitario || 0);
+
+    await client.query(
+      `INSERT INTO estoque_produtos (produto_id, quantidade_atual)
+       VALUES ($1, $2)
+       ON CONFLICT (produto_id) DO UPDATE SET
+         quantidade_atual = estoque_produtos.quantidade_atual + $2,
+         atualizado_em = NOW()`,
+      [produto_id, qtd]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ success: true, quantidade_adicionada: qtd, custo_unitario: custo });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/estoques/produtos/produzir — produz X unidades: debita insumos e adiciona ao estoque de produto
+router.post('/produtos/produzir', async (req, res) => {
+  const { produto_id, quantidade } = req.body;
+  if (!produto_id || !quantidade) {
+    return res.status(400).json({ error: 'produto_id e quantidade são obrigatórios' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const qtd = parseFloat(quantidade);
+
+    // Busca ficha técnica (insumos + produtos componentes)
+    const ficha = await client.query(
+      `SELECT pi.quantidade_por_unidade,
+              'insumo' as tipo_componente,
+              pi.insumo_id as componente_id,
+              i.nome as componente_nome, i.unidade,
+              COALESCE(e.quantidade_atual, 0) as estoque_atual
+       FROM produto_insumos pi
+       JOIN insumos i ON i.id = pi.insumo_id
+       LEFT JOIN estoques e ON e.insumo_id = pi.insumo_id
+       WHERE pi.produto_id = $1 AND pi.insumo_id IS NOT NULL
+
+       UNION ALL
+
+       SELECT pi.quantidade_por_unidade,
+              'produto' as tipo_componente,
+              pi.componente_produto_id as componente_id,
+              p.nome as componente_nome, p.unidade,
+              COALESCE(ep.quantidade_atual, 0) as estoque_atual
+       FROM produto_insumos pi
+       JOIN produtos p ON p.id = pi.componente_produto_id
+       LEFT JOIN estoque_produtos ep ON ep.produto_id = pi.componente_produto_id
+       WHERE pi.produto_id = $1 AND pi.componente_produto_id IS NOT NULL`,
+      [produto_id]
+    );
+
+    if (ficha.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Produto sem ficha técnica. Cadastre os ingredientes primeiro.' });
+    }
+
+    // Valida estoque de cada componente
+    for (const item of ficha.rows) {
+      const necessario = item.quantidade_por_unidade * qtd;
+      if (parseFloat(item.estoque_atual) < necessario) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `Estoque insuficiente de "${item.componente_nome}": disponível ${parseFloat(item.estoque_atual).toFixed(2)} ${item.unidade}, necessário ${necessario.toFixed(2)} ${item.unidade}`
+        });
+      }
+    }
+
+    // Debita cada componente do seu respectivo estoque
+    for (const item of ficha.rows) {
+      const novaQtd = parseFloat(item.estoque_atual) - item.quantidade_por_unidade * qtd;
+      if (item.tipo_componente === 'insumo') {
+        await client.query(
+          `UPDATE estoques SET quantidade_atual = $1, atualizado_em = NOW() WHERE insumo_id = $2`,
+          [novaQtd, item.componente_id]
+        );
+      } else {
+        await client.query(
+          `UPDATE estoque_produtos SET quantidade_atual = $1, atualizado_em = NOW() WHERE produto_id = $2`,
+          [novaQtd, item.componente_id]
+        );
+      }
+    }
+
+    // Adiciona ao estoque de produto
+    await client.query(
+      `INSERT INTO estoque_produtos (produto_id, quantidade_atual)
+       VALUES ($1, $2)
+       ON CONFLICT (produto_id) DO UPDATE SET
+         quantidade_atual = estoque_produtos.quantidade_atual + $2,
+         atualizado_em = NOW()`,
+      [produto_id, qtd]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ success: true, quantidade_produzida: qtd });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/estoques/produtos/usar — saída interna (uso no gado, sem registro financeiro)
+router.post('/produtos/usar', async (req, res) => {
+  const { produto_id, quantidade, motivo } = req.body;
+  if (!produto_id || !quantidade) {
+    return res.status(400).json({ error: 'produto_id e quantidade são obrigatórios' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const qtd = parseFloat(quantidade);
+
+    const saldo = await client.query(
+      'SELECT COALESCE(quantidade_atual, 0) as quantidade_atual FROM estoque_produtos WHERE produto_id = $1',
+      [produto_id]
+    );
+
+    const qtdAtual = parseFloat(saldo.rows[0]?.quantidade_atual || 0);
+    if (qtd > qtdAtual) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `Estoque insuficiente: disponível ${qtdAtual.toFixed(2)}, solicitado ${qtd.toFixed(2)}`
+      });
+    }
+
+    await client.query(
+      `UPDATE estoque_produtos SET quantidade_atual = quantidade_atual - $1, atualizado_em = NOW()
+       WHERE produto_id = $2`,
+      [qtd, produto_id]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ success: true, quantidade_restante: qtdAtual - qtd });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
