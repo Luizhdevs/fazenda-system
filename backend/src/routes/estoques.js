@@ -13,7 +13,9 @@ router.get('/', async (req, res) => {
               e.atualizado_em
        FROM insumos i
        LEFT JOIN estoques e ON e.insumo_id = i.id
-       ORDER BY i.nome`
+       WHERE i.fazenda_id = $1
+       ORDER BY i.nome`,
+      [req.usuario.fazenda_id]
     );
     res.json(result.rows);
   } catch (err) {
@@ -32,6 +34,16 @@ router.post('/ajuste', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Verifica que o insumo pertence ao usuário
+    const dono = await client.query(
+      'SELECT id FROM insumos WHERE id = $1 AND fazenda_id = $2',
+      [insumo_id, req.usuario.fazenda_id]
+    );
+    if (dono.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Insumo não encontrado' });
+    }
 
     const estoqueAtual = await client.query(
       'SELECT quantidade_atual, custo_medio FROM estoques WHERE insumo_id = $1',
@@ -81,33 +93,31 @@ router.post('/ajuste', async (req, res) => {
 
 // ─── Estoque de Produtos ──────────────────────────────────────────────────────
 
-// GET /api/estoques/produtos — saldo de todos os produtos (mesmo os zerados)
+// GET /api/estoques/produtos — saldo de todos os produtos
 router.get('/produtos', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT p.id as produto_id, p.nome, p.unidade,
               COALESCE(ep.quantidade_atual, 0) as quantidade_atual,
               ep.atualizado_em,
-              -- custo médio calculado pela ficha técnica
               COALESCE((
                 SELECT SUM(pi.quantidade_por_unidade * COALESCE(e.custo_medio, 0))
                 FROM produto_insumos pi
                 LEFT JOIN estoques e ON e.insumo_id = pi.insumo_id
                 WHERE pi.produto_id = p.id
               ), 0) as custo_unitario,
-              -- capacidade máxima produzível com insumos atuais
               COALESCE((
                 SELECT MIN(FLOOR(COALESCE(e.quantidade_atual, 0) / NULLIF(pi.quantidade_por_unidade, 0)))
                 FROM produto_insumos pi
                 LEFT JOIN estoques e ON e.insumo_id = pi.insumo_id
                 WHERE pi.produto_id = p.id
               ), 0) as capacidade_producao,
-              -- tem ficha técnica?
               EXISTS(SELECT 1 FROM produto_insumos WHERE produto_id = p.id) as tem_ficha
        FROM produtos p
        LEFT JOIN estoque_produtos ep ON ep.produto_id = p.id
-       WHERE p.ativo = true
-       ORDER BY p.nome`
+       WHERE p.fazenda_id = $1 AND p.ativo = true
+       ORDER BY p.nome`,
+      [req.usuario.fazenda_id]
     );
     res.json(result.rows);
   } catch (err) {
@@ -115,7 +125,7 @@ router.get('/produtos', async (req, res) => {
   }
 });
 
-// POST /api/estoques/produtos/entrada — entrada manual (colheita, doação, ajuste) sem debitar ingredientes
+// POST /api/estoques/produtos/entrada — entrada manual (colheita, doação, ajuste)
 router.post('/produtos/entrada', async (req, res) => {
   const { produto_id, quantidade, custo_unitario, observacao } = req.body;
   if (!produto_id || !quantidade) {
@@ -126,9 +136,17 @@ router.post('/produtos/entrada', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const qtd   = parseFloat(quantidade);
-    const custo = parseFloat(custo_unitario || 0);
+    // Verifica que o produto pertence ao usuário
+    const dono = await client.query(
+      'SELECT id FROM produtos WHERE id = $1 AND fazenda_id = $2',
+      [produto_id, req.usuario.fazenda_id]
+    );
+    if (dono.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Produto não encontrado' });
+    }
 
+    const qtd = parseFloat(quantidade);
     await client.query(
       `INSERT INTO estoque_produtos (produto_id, quantidade_atual)
        VALUES ($1, $2)
@@ -139,7 +157,7 @@ router.post('/produtos/entrada', async (req, res) => {
     );
 
     await client.query('COMMIT');
-    res.status(201).json({ success: true, quantidade_adicionada: qtd, custo_unitario: custo });
+    res.status(201).json({ success: true, quantidade_adicionada: qtd });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
@@ -148,7 +166,7 @@ router.post('/produtos/entrada', async (req, res) => {
   }
 });
 
-// POST /api/estoques/produtos/produzir — produz X unidades: debita insumos e adiciona ao estoque de produto
+// POST /api/estoques/produtos/produzir — produz X unidades: debita insumos e adiciona ao estoque
 router.post('/produtos/produzir', async (req, res) => {
   const { produto_id, quantidade } = req.body;
   if (!produto_id || !quantidade) {
@@ -159,9 +177,18 @@ router.post('/produtos/produzir', async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // Verifica que o produto pertence ao usuário
+    const dono = await client.query(
+      'SELECT id FROM produtos WHERE id = $1 AND fazenda_id = $2',
+      [produto_id, req.usuario.fazenda_id]
+    );
+    if (dono.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Produto não encontrado' });
+    }
+
     const qtd = parseFloat(quantidade);
 
-    // Busca ficha técnica (insumos + produtos componentes)
     const ficha = await client.query(
       `SELECT pi.quantidade_por_unidade,
               'insumo' as tipo_componente,
@@ -192,7 +219,6 @@ router.post('/produtos/produzir', async (req, res) => {
       return res.status(400).json({ error: 'Produto sem ficha técnica. Cadastre os ingredientes primeiro.' });
     }
 
-    // Valida estoque de cada componente
     for (const item of ficha.rows) {
       const necessario = item.quantidade_por_unidade * qtd;
       if (parseFloat(item.estoque_atual) < necessario) {
@@ -203,7 +229,6 @@ router.post('/produtos/produzir', async (req, res) => {
       }
     }
 
-    // Debita cada componente do seu respectivo estoque
     for (const item of ficha.rows) {
       const novaQtd = parseFloat(item.estoque_atual) - item.quantidade_por_unidade * qtd;
       if (item.tipo_componente === 'insumo') {
@@ -219,7 +244,6 @@ router.post('/produtos/produzir', async (req, res) => {
       }
     }
 
-    // Adiciona ao estoque de produto
     await client.query(
       `INSERT INTO estoque_produtos (produto_id, quantidade_atual)
        VALUES ($1, $2)
@@ -250,14 +274,23 @@ router.post('/produtos/usar', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const qtd = parseFloat(quantidade);
+    // Verifica que o produto pertence ao usuário
+    const dono = await client.query(
+      'SELECT id FROM produtos WHERE id = $1 AND fazenda_id = $2',
+      [produto_id, req.usuario.fazenda_id]
+    );
+    if (dono.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Produto não encontrado' });
+    }
 
+    const qtd = parseFloat(quantidade);
     const saldo = await client.query(
       'SELECT COALESCE(quantidade_atual, 0) as quantidade_atual FROM estoque_produtos WHERE produto_id = $1',
       [produto_id]
     );
-
     const qtdAtual = parseFloat(saldo.rows[0]?.quantidade_atual || 0);
+
     if (qtd > qtdAtual) {
       await client.query('ROLLBACK');
       return res.status(400).json({
@@ -266,8 +299,7 @@ router.post('/produtos/usar', async (req, res) => {
     }
 
     await client.query(
-      `UPDATE estoque_produtos SET quantidade_atual = quantidade_atual - $1, atualizado_em = NOW()
-       WHERE produto_id = $2`,
+      `UPDATE estoque_produtos SET quantidade_atual = quantidade_atual - $1, atualizado_em = NOW() WHERE produto_id = $2`,
       [qtd, produto_id]
     );
 

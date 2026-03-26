@@ -14,8 +14,9 @@ router.get('/', async (req, res) => {
           WHERE pi.produto_id = p.id
         ), 0) as custo_producao
        FROM produtos p
-       WHERE p.ativo = true
-       ORDER BY p.nome`
+       WHERE p.fazenda_id = $1 AND p.ativo = true
+       ORDER BY p.nome`,
+      [req.usuario.fazenda_id]
     );
     res.json(result.rows);
   } catch (err) {
@@ -28,8 +29,8 @@ router.post('/', async (req, res) => {
   const { nome, unidade } = req.body;
   try {
     const result = await pool.query(
-      'INSERT INTO produtos (nome, unidade) VALUES ($1, $2) RETURNING *',
-      [nome, unidade]
+      'INSERT INTO produtos (nome, unidade, fazenda_id) VALUES ($1, $2, $3) RETURNING *',
+      [nome, unidade, req.usuario.fazenda_id]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -42,9 +43,10 @@ router.put('/:id', async (req, res) => {
   const { nome, unidade } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE produtos SET nome = $1, unidade = $2 WHERE id = $3 RETURNING *',
-      [nome, unidade, req.params.id]
+      'UPDATE produtos SET nome = $1, unidade = $2 WHERE id = $3 AND fazenda_id = $4 RETURNING *',
+      [nome, unidade, req.params.id, req.usuario.fazenda_id]
     );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Produto não encontrado' });
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -54,16 +56,26 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/produtos/:id (soft delete)
 router.delete('/:id', async (req, res) => {
   try {
-    await pool.query('UPDATE produtos SET ativo = false WHERE id = $1', [req.params.id]);
+    await pool.query(
+      'UPDATE produtos SET ativo = false WHERE id = $1 AND fazenda_id = $2',
+      [req.params.id, req.usuario.fazenda_id]
+    );
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/produtos/:id/insumos — ficha técnica (insumos + produtos componentes)
+// GET /api/produtos/:id/insumos — ficha técnica
 router.get('/:id/insumos', async (req, res) => {
   try {
+    // Verifica que o produto pertence ao usuário
+    const dono = await pool.query(
+      'SELECT id FROM produtos WHERE id = $1 AND fazenda_id = $2',
+      [req.params.id, req.usuario.fazenda_id]
+    );
+    if (dono.rows.length === 0) return res.status(404).json({ error: 'Produto não encontrado' });
+
     const result = await pool.query(
       `SELECT pi.id, pi.quantidade_por_unidade,
               'insumo'          as tipo_componente,
@@ -107,21 +119,22 @@ router.get('/:id/insumos', async (req, res) => {
   }
 });
 
-// POST /api/produtos/:id/insumos — adicionar componente (insumo ou produto) à ficha técnica
+// POST /api/produtos/:id/insumos — adicionar componente à ficha técnica
 router.post('/:id/insumos', async (req, res) => {
   const { insumo_id, componente_produto_id, quantidade_por_unidade } = req.body;
 
-  if (!quantidade_por_unidade) {
-    return res.status(400).json({ error: 'quantidade_por_unidade é obrigatório' });
-  }
-  if (!insumo_id && !componente_produto_id) {
-    return res.status(400).json({ error: 'Informe insumo_id ou componente_produto_id' });
-  }
-  if (componente_produto_id === req.params.id) {
-    return res.status(400).json({ error: 'Um produto não pode ser componente de si mesmo' });
-  }
+  if (!quantidade_por_unidade) return res.status(400).json({ error: 'quantidade_por_unidade é obrigatório' });
+  if (!insumo_id && !componente_produto_id) return res.status(400).json({ error: 'Informe insumo_id ou componente_produto_id' });
+  if (componente_produto_id === req.params.id) return res.status(400).json({ error: 'Um produto não pode ser componente de si mesmo' });
 
   try {
+    // Verifica que o produto pertence ao usuário
+    const dono = await pool.query(
+      'SELECT id FROM produtos WHERE id = $1 AND fazenda_id = $2',
+      [req.params.id, req.usuario.fazenda_id]
+    );
+    if (dono.rows.length === 0) return res.status(404).json({ error: 'Produto não encontrado' });
+
     let result;
     if (insumo_id) {
       result = await pool.query(
@@ -132,7 +145,6 @@ router.post('/:id/insumos', async (req, res) => {
         [req.params.id, insumo_id, quantidade_por_unidade]
       );
     } else {
-      // Partial index não suporta ON CONFLICT — faz upsert manual
       const existe = await pool.query(
         'SELECT id FROM produto_insumos WHERE produto_id = $1 AND componente_produto_id = $2',
         [req.params.id, componente_produto_id]
@@ -156,9 +168,16 @@ router.post('/:id/insumos', async (req, res) => {
   }
 });
 
-// DELETE /api/produtos/:id/insumos/:item_id — remove componente da ficha (por id do registro)
+// DELETE /api/produtos/:id/insumos/:item_id
 router.delete('/:id/insumos/:item_id', async (req, res) => {
   try {
+    // Verifica que o produto pertence ao usuário antes de remover o componente
+    const dono = await pool.query(
+      'SELECT id FROM produtos WHERE id = $1 AND fazenda_id = $2',
+      [req.params.id, req.usuario.fazenda_id]
+    );
+    if (dono.rows.length === 0) return res.status(404).json({ error: 'Produto não encontrado' });
+
     await pool.query(
       'DELETE FROM produto_insumos WHERE id = $1 AND produto_id = $2',
       [req.params.item_id, req.params.id]
