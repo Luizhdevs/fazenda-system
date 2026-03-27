@@ -10,15 +10,29 @@ router.get('/', async (req, res) => {
   const uid = req.usuario.fazenda_id;
 
   try {
-    const [totalVendas, totalReceitas, totalCompras, totalDespesas, totalFuncionarios, vendasPorProduto] = await Promise.all([
+    const [totalVendasVista, totalFiadoPago, totalReceitas, totalCompras, totalDespesas, totalFuncionarios, vendasPorProduto, totalAReceber] = await Promise.all([
+      // Vendas à vista (já recebidas no ato)
       pool.query(
         `SELECT COALESCE(SUM(preco_total), 0) as total FROM vendas
-         WHERE fazenda_id = $1 AND EXTRACT(MONTH FROM data_venda) = $2 AND EXTRACT(YEAR FROM data_venda) = $3`,
+         WHERE fazenda_id = $1
+           AND EXTRACT(MONTH FROM data_venda) = $2 AND EXTRACT(YEAR FROM data_venda) = $3
+           AND (fiado = false OR fiado IS NULL)`,
         [uid, mesAtual, anoAtual]
       ),
+      // Fiado recebido este mês (pagamentos de débitos)
       pool.query(
         `SELECT COALESCE(SUM(valor), 0) as total FROM receitas
-         WHERE fazenda_id = $1 AND EXTRACT(MONTH FROM data_receita) = $2 AND EXTRACT(YEAR FROM data_receita) = $3`,
+         WHERE fazenda_id = $1
+           AND EXTRACT(MONTH FROM data_receita) = $2 AND EXTRACT(YEAR FROM data_receita) = $3
+           AND categoria = 'fiado_pago'`,
+        [uid, mesAtual, anoAtual]
+      ),
+      // Outras receitas (leite, subsídios, etc.) — sem fiado_pago
+      pool.query(
+        `SELECT COALESCE(SUM(valor), 0) as total FROM receitas
+         WHERE fazenda_id = $1
+           AND EXTRACT(MONTH FROM data_receita) = $2 AND EXTRACT(YEAR FROM data_receita) = $3
+           AND categoria != 'fiado_pago'`,
         [uid, mesAtual, anoAtual]
       ),
       pool.query(
@@ -48,22 +62,32 @@ router.get('/', async (req, res) => {
          GROUP BY produto ORDER BY total DESC`,
         [uid, mesAtual, anoAtual]
       ),
+      pool.query(
+        `SELECT COALESCE(SUM(d.valor), 0) as total
+         FROM debitos d
+         JOIN clientes c ON c.id = d.cliente_id
+         WHERE c.fazenda_id = $1 AND d.pago = false`,
+        [uid]
+      ),
     ]);
 
-    const entradas   = parseFloat(totalVendas.rows[0].total) + parseFloat(totalReceitas.rows[0].total);
+    const vendas     = parseFloat(totalVendasVista.rows[0].total) + parseFloat(totalFiadoPago.rows[0].total);
+    const receitas   = parseFloat(totalReceitas.rows[0].total);
+    const entradas   = vendas + receitas;
     const saidas     = parseFloat(totalCompras.rows[0].total) + parseFloat(totalDespesas.rows[0].total);
     const custoFolha = parseFloat(totalFuncionarios.rows[0].total);
 
     res.json({
       totalEntradas:      entradas,
-      totalVendas:        parseFloat(totalVendas.rows[0].total),
-      totalReceitas:      parseFloat(totalReceitas.rows[0].total),
+      totalVendas:        vendas,
+      totalReceitas:      receitas,
       totalCompras:       parseFloat(totalCompras.rows[0].total),
       totalDespesas:      parseFloat(totalDespesas.rows[0].total),
       totalFuncionarios:  custoFolha,
       qtdFuncionarios:    parseInt(totalFuncionarios.rows[0].qtd),
       resultado:          entradas - saidas - custoFolha,
       vendasPorProduto:   vendasPorProduto.rows,
+      totalAReceber:      parseFloat(totalAReceber.rows[0].total),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

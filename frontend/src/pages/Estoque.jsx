@@ -28,11 +28,10 @@ export default function Estoque() {
   const [mostraInsumo, setMostraInsumo] = useState(false)
   const [erroInsumo, setErroInsumo]     = useState('')
 
-  const [formProd, setFormProd]     = useState({ produto_id: '', quantidade: '', motivo: '', custo_unitario: '' })
+  const [formProd, setFormProd]     = useState({ produto_id: '', quantidade: '', motivo: '', custo_unitario: '', tipoAjuste: 'adicionar' })
   const [acaoProd, setAcaoProd]     = useState(null)
   const [erroProd, setErroProd]     = useState('')
   const [salvando, setSalvando]     = useState(false)
-  const [fichaProducao, setFichaProducao] = useState([])
 
   const carregarInsumos  = () => api.get('/estoques').then(r => setInsumos(r.data))
   const carregarProdutos = () => api.get('/estoques/produtos').then(r => setProdutos(r.data))
@@ -64,16 +63,10 @@ export default function Estoque() {
     }
   }
 
-  const abrirAcao = async (produto, acao) => {
+  const abrirAcao = (produto, acao) => {
     setAcaoProd(acao)
     setFormProd({ produto_id: produto.produto_id, quantidade: '', motivo: '', custo_unitario: '' })
     setErroProd('')
-    if (acao === 'produzir') {
-      const r = await api.get(`/produtos/${produto.produto_id}/insumos`)
-      setFichaProducao(r.data)
-    } else {
-      setFichaProducao([])
-    }
   }
 
   const salvarAcaoProd = async () => {
@@ -81,8 +74,13 @@ export default function Estoque() {
     if (!formProd.quantidade) { setErroProd('Informe a quantidade.'); return }
     setSalvando(true)
     try {
-      const rotas = { produzir: '/estoques/produtos/produzir', colheita: '/estoques/produtos/entrada', usar: '/estoques/produtos/usar' }
-      await api.post(rotas[acaoProd], {
+      let rota
+      if (acaoProd === 'ajuste') {
+        rota = formProd.tipoAjuste === 'adicionar' ? '/estoques/produtos/entrada' : '/estoques/produtos/usar'
+      } else {
+        rota = acaoProd === 'colheita' ? '/estoques/produtos/entrada' : '/estoques/produtos/usar'
+      }
+      await api.post(rota, {
         produto_id:     formProd.produto_id,
         quantidade:     parseFloat(formProd.quantidade),
         custo_unitario: formProd.custo_unitario ? parseFloat(formProd.custo_unitario) : 0,
@@ -142,25 +140,30 @@ export default function Estoque() {
               <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '4px' }}>
                 Você tem agora: <strong style={{ color: '#111827' }}>{fmt(produtoAcao.quantidade_atual)} {produtoAcao.unidade}</strong>
               </div>
-              {acaoProd === 'produzir' && parseFloat(produtoAcao.capacidade_producao) > 0 && (
-                <div style={{ fontSize: '13px', color: '#1D9E75', fontWeight: '600', marginBottom: '12px' }}>
-                  Você consegue produzir até {fmtInt(produtoAcao.capacidade_producao)} {produtoAcao.unidade} agora
+              {/* Explicação da ação */}
+              {acaoProd === 'ajuste' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '14px' }}>
+                  {[['adicionar', '+ Adicionar'], ['remover', '− Remover']].map(([t, l]) => (
+                    <button key={t} onClick={() => setFormProd({ ...formProd, tipoAjuste: t })}
+                      style={{ padding: '12px', borderRadius: '10px', border: formProd.tipoAjuste === t ? 'none' : '1.5px solid #E5E7EB', background: formProd.tipoAjuste === t ? (t === 'adicionar' ? '#1D9E75' : '#E24B4A') : '#fff', color: formProd.tipoAjuste === t ? '#fff' : '#6B7280', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {acaoProd !== 'ajuste' && (
+                <div style={{ background: acaoProd === 'usar' ? '#FEF2F2' : '#F0FDF4', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', fontSize: '12px', color: acaoProd === 'usar' ? '#B91C1C' : '#065F46' }}>
+                  {acaoProd === 'colheita' && 'Informe quanto você colheu ou recebeu. Isso vai aumentar o estoque desse produto.'}
+                  {acaoProd === 'usar' && 'Informe quanto vai sair do estoque. Use isso quando der o produto para os animais ou usar internamente.'}
                 </div>
               )}
 
-              {/* Explicação da ação */}
-              <div style={{ background: acaoProd === 'usar' ? '#FEF2F2' : '#F0FDF4', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', fontSize: '12px', color: acaoProd === 'usar' ? '#B91C1C' : '#065F46' }}>
-                {acaoProd === 'produzir' && 'Informe quantas unidades você vai fabricar agora. O sistema vai descontar os ingredientes do estoque automaticamente.'}
-                {acaoProd === 'colheita' && 'Informe quanto você colheu ou recebeu. Isso vai aumentar o estoque desse produto.'}
-                {acaoProd === 'usar' && 'Informe quanto vai sair do estoque. Use isso quando der o produto para os animais ou usar internamente.'}
-              </div>
-
               <div style={{ marginBottom: '14px' }}>
                 <label style={S.label}>
-                  {acaoProd === 'produzir' ? 'Quantas unidades vai produzir?'
-                  : acaoProd === 'colheita' ? 'Quanto você colheu / recebeu?'
-                  : 'Quanto vai sair do estoque?'}
-                  {' '}({produtoAcao.unidade})
+                  {acaoProd === 'ajuste'
+                    ? `Quantidade a ${formProd.tipoAjuste === 'adicionar' ? 'adicionar' : 'remover'} (${produtoAcao.unidade})`
+                    : acaoProd === 'colheita' ? `Quanto você colheu / recebeu? (${produtoAcao.unidade})`
+                    : `Quanto vai sair do estoque? (${produtoAcao.unidade})`}
                 </label>
                 <input type="number" min="0" step="0.01"
                   value={formProd.quantidade}
@@ -180,7 +183,7 @@ export default function Estoque() {
                 </div>
               )}
 
-              {(acaoProd === 'usar' || acaoProd === 'colheita') && (
+              {acaoProd !== 'ajuste' && (
                 <div style={{ marginBottom: '14px' }}>
                   <label style={S.label}>
                     {acaoProd === 'colheita' ? 'Observação (opcional)' : 'Para que vai usar? (opcional)'}
@@ -192,66 +195,6 @@ export default function Estoque() {
                 </div>
               )}
 
-              {/* Preview de ingredientes consumidos */}
-              {acaoProd === 'produzir' && fichaProducao.length > 0 && (
-                <div style={{ marginBottom: '14px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#6B7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Ingredientes que vão ser usados
-                  </div>
-                  {fichaProducao.map(item => {
-                    const qtdProd     = parseFloat(formProd.quantidade) || 0
-                    const peso        = parseFloat(item.peso_por_unidade) || 1
-                    const consumo_kg  = item.quantidade_por_unidade * qtdProd
-                    const disp_nativo = parseFloat(item.estoque_atual)
-                    const disp_kg     = disp_nativo * peso
-                    const suficiente  = disp_kg >= consumo_kg
-                    const semQtd      = qtdProd === 0
-                    const unidade     = item.componente_unidade || 'kg'
-                    const isKg        = unidade === 'kg'
-                    const consumo_nativo = consumo_kg / peso
-
-                    return (
-                      <div key={item.id || item.componente_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: '10px', marginBottom: '6px', background: semQtd ? '#F9FAFB' : (suficiente ? '#F0FDF4' : '#FEF2F2'), border: `1px solid ${semQtd ? '#E5E7EB' : (suficiente ? '#BBF7D0' : '#FECACA')}` }}>
-                        <div>
-                          <div style={{ fontSize: '13px', fontWeight: '600', color: '#111827' }}>{item.componente_nome}</div>
-                          <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '2px' }}>
-                            Tem no estoque: {fmt(disp_nativo)} {unidade}
-                            {!isKg && <span> ({fmt(disp_kg)} kg)</span>}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '10px' }}>
-                          {semQtd ? (
-                            <span style={{ fontSize: '12px', color: '#9CA3AF' }}>—</span>
-                          ) : (
-                            <>
-                              <div style={{ fontSize: '14px', fontWeight: '700', color: suficiente ? '#166534' : '#B91C1C' }}>
-                                {!isKg ? `${fmt(consumo_nativo)} ${unidade}` : `${fmt(consumo_kg)} kg`}
-                              </div>
-                              {!isKg && (
-                                <div style={{ fontSize: '11px', color: suficiente ? '#166534' : '#B91C1C' }}>
-                                  {fmt(consumo_kg)} kg
-                                </div>
-                              )}
-                              {!suficiente && (
-                                <div style={{ fontSize: '11px', color: '#B91C1C', fontWeight: '600' }}>
-                                  FALTA {fmt((consumo_kg - disp_kg) / peso)} {unidade}
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {acaoProd === 'produzir' && fichaProducao.length === 0 && (
-                <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '10px', padding: '12px', marginBottom: '14px', fontSize: '13px', color: '#92400E' }}>
-                  Este produto ainda não tem receita cadastrada. Vá em <strong>Produtos → Ficha técnica</strong> e adicione os ingredientes.
-                </div>
-              )}
-
               {erroProd && (
                 <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', fontSize: '13px', color: '#B91C1C', fontWeight: '600' }}>
                   {erroProd}
@@ -260,9 +203,9 @@ export default function Estoque() {
 
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={salvarAcaoProd} disabled={salvando}
-                  style={acaoProd === 'usar' ? S.btnRed : S.btnGreen}>
+                  style={(acaoProd === 'usar' || (acaoProd === 'ajuste' && formProd.tipoAjuste === 'remover')) ? S.btnRed : S.btnGreen}>
                   {salvando ? 'Salvando...'
-                  : acaoProd === 'produzir' ? 'Confirmar produção'
+                  : acaoProd === 'ajuste' ? 'Confirmar ajuste'
                   : acaoProd === 'colheita' ? 'Confirmar entrada'
                   : 'Confirmar saída'}
                 </button>
@@ -301,16 +244,16 @@ export default function Estoque() {
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
-                      {temFicha ? (
-                        <button onClick={() => abrirAcao(p, 'produzir')}
-                          style={{ padding: '8px 14px', background: podeProduzir ? '#1D9E75' : '#E5E7EB', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: podeProduzir ? 'pointer' : 'not-allowed', color: podeProduzir ? '#fff' : '#9CA3AF' }}
-                          disabled={!podeProduzir}>
-                          + Produzir
-                        </button>
-                      ) : (
+                      {!temFicha && (
                         <button onClick={() => abrirAcao(p, 'colheita')}
                           style={{ padding: '8px 14px', background: '#1D9E75', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', color: '#fff' }}>
                           + Entrada
+                        </button>
+                      )}
+                      {temFicha && (
+                        <button onClick={() => abrirAcao(p, 'ajuste')}
+                          style={{ padding: '8px 14px', background: '#fff', border: '1.5px solid #D1D5DB', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', color: '#374151' }}>
+                          Ajustar
                         </button>
                       )}
                       {qtd > 0 && (
@@ -323,19 +266,14 @@ export default function Estoque() {
                   </div>
                 </div>
 
-                {temFicha && !podeProduzir && semEstoque && (
+                {temFicha && !podeProduzir && (
                   <div style={{ borderTop: '1px solid #F3F4F6', padding: '10px 16px', background: '#FFFBEB', fontSize: '12px', color: '#92400E', fontWeight: '500' }}>
                     Sem ingredientes suficientes para produzir. Verifique o estoque de ingredientes.
                   </div>
                 )}
-                {temFicha && podeProduzir && semEstoque && (
-                  <div style={{ borderTop: '1px solid #F3F4F6', padding: '10px 16px', background: '#F0FDF4', fontSize: '12px', color: '#166534', fontWeight: '600' }}>
-                    Pronto para produzir! Você consegue fazer até <strong>{fmtInt(p.capacidade_producao)} {p.unidade}</strong>
-                  </div>
-                )}
-                {temFicha && podeProduzir && !semEstoque && (
+                {temFicha && podeProduzir && (
                   <div style={{ borderTop: '1px solid #F3F4F6', padding: '10px 16px', background: '#F0FDF4', fontSize: '12px', color: '#166534' }}>
-                    Pode produzir mais <strong>{fmtInt(p.capacidade_producao)} {p.unidade}</strong> com os ingredientes disponíveis
+                    Pode produzir até <strong>{fmtInt(p.capacidade_producao)} {p.unidade}</strong> — registre em <strong>Registrar</strong>
                   </div>
                 )}
                 {!temFicha && (

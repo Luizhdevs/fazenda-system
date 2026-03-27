@@ -66,6 +66,21 @@ export default function Painel() {
         + Registrar venda, compra ou despesa
       </button>
 
+      {/* A receber (fiado pendente) */}
+      {dados.totalAReceber > 0 && (
+        <div onClick={() => navigate('/clientes')}
+          style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A', borderRadius: '14px', padding: '14px 16px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '700', color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '3px' }}>A receber (fiado)</div>
+            <div style={{ fontSize: '12px', color: '#B45309' }}>Clientes que ainda não pagaram</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '20px', fontWeight: '700', color: '#D97706' }}>{fmt(dados.totalAReceber)}</div>
+            <div style={{ fontSize: '10px', color: '#D97706' }}>toque para ver ›</div>
+          </div>
+        </div>
+      )}
+
       {/* Cards — Entradas */}
       <div style={{ fontSize: '12px', fontWeight: '700', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px', paddingLeft: '2px' }}>
         Dinheiro que entrou na fazenda
@@ -74,12 +89,12 @@ export default function Painel() {
         <div style={{ background: '#fff', borderRadius: '14px', padding: '16px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', borderLeft: '4px solid #1D9E75' }}>
           <div style={{ fontSize: '11px', color: '#6B7280', marginBottom: '6px', fontWeight: '500' }}>Venda de produtos</div>
           <div style={{ fontSize: '18px', fontWeight: '700', color: '#1D9E75' }}>{fmt(dados.totalVendas)}</div>
-          <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '3px' }}>ração, animais, etc.</div>
+          <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '3px' }}>à vista + fiado recebido</div>
         </div>
         <div style={{ background: '#fff', borderRadius: '14px', padding: '16px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', borderLeft: '4px solid #10B981' }}>
           <div style={{ fontSize: '11px', color: '#6B7280', marginBottom: '6px', fontWeight: '500' }}>Outras entradas</div>
           <div style={{ fontSize: '18px', fontWeight: '700', color: '#10B981' }}>{fmt(dados.totalReceitas)}</div>
-          <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '3px' }}>leite, subsídios, etc.</div>
+          <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '3px' }}>leite, subsídios, fiado pago</div>
         </div>
       </div>
 

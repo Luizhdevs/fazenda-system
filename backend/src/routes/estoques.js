@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
 
+// Arredonda para evitar imprecisão de ponto flutuante (ex: 49.98 em vez de 50)
+const r6 = (v) => Math.round(v * 1e6) / 1e6;
+
 // GET /api/estoques — lista todos os insumos com saldo (mesmo os zerados)
 router.get('/', async (req, res) => {
   try {
@@ -62,14 +65,14 @@ router.post('/ajuste', async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Preço unitário é obrigatório para entradas' });
       }
-      novaQtd = qtdAtual + qtd;
-      novoCusto = (qtdAtual * custoAtual + qtd * preco) / novaQtd;
+      novaQtd = r6(qtdAtual + qtd);
+      novoCusto = r6((qtdAtual * custoAtual + qtd * preco) / novaQtd);
     } else {
       if (qtd > qtdAtual) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Quantidade insuficiente em estoque' });
       }
-      novaQtd = qtdAtual - qtd;
+      novaQtd = r6(qtdAtual - qtd);
       novoCusto = custoAtual;
     }
 
@@ -260,8 +263,8 @@ router.post('/produtos/produzir', async (req, res) => {
     for (const item of ficha.rows) {
       const peso = parseFloat(item.peso_por_unidade) || 1;
       // converte kg necessários de volta para a unidade nativa do insumo
-      const consumo_nativo = (item.quantidade_por_unidade * qtd) / peso;
-      const novaQtd = parseFloat(item.estoque_atual) - consumo_nativo;
+      const consumo_nativo = r6((item.quantidade_por_unidade * qtd) / peso);
+      const novaQtd = r6(parseFloat(item.estoque_atual) - consumo_nativo);
       if (item.tipo_componente === 'insumo') {
         await client.query(
           `UPDATE estoques SET quantidade_atual = $1, atualizado_em = NOW() WHERE insumo_id = $2`,

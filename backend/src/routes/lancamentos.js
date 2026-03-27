@@ -13,7 +13,7 @@ router.get('/', async (req, res) => {
     const vendas = await pool.query(
       `SELECT id, 'venda' as tipo, produto as descricao, cliente,
               quantidade, preco_unitario, preco_total as valor,
-              data_venda as data, observacao
+              data_venda as data, observacao, fiado
        FROM vendas
        WHERE fazenda_id = $1
          AND EXTRACT(MONTH FROM data_venda) = $2 AND EXTRACT(YEAR FROM data_venda) = $3
@@ -69,7 +69,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/lancamentos/venda
 router.post('/venda', async (req, res) => {
-  const { produto, produto_id, quantidade, preco_unitario, custo_unitario, cliente, cliente_id, data_venda, observacao } = req.body;
+  const { produto, produto_id, quantidade, preco_unitario, custo_unitario, cliente, cliente_id, data_venda, observacao, fiado } = req.body;
   const uid = req.usuario.fazenda_id;
 
   const client = await pool.connect();
@@ -119,9 +119,9 @@ router.post('/venda', async (req, res) => {
     }
 
     const result = await client.query(
-      `INSERT INTO vendas (produto, produto_id, quantidade, preco_unitario, custo_unitario, cliente, cliente_id, data_venda, observacao, fazenda_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-      [produto, produto_id || null, quantidade, preco_unitario, custoTotal, cliente, cliente_id || null, data_venda, observacao, uid]
+      `INSERT INTO vendas (produto, produto_id, quantidade, preco_unitario, custo_unitario, cliente, cliente_id, data_venda, observacao, fazenda_id, fiado)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      [produto, produto_id || null, quantidade, preco_unitario, custoTotal, cliente, cliente_id || null, data_venda, observacao, uid, fiado === true]
     );
 
     await client.query('COMMIT');

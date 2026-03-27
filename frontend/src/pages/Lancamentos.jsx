@@ -4,16 +4,19 @@ import api from '../services/api'
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
 const TIPO = {
-  venda:   { label: 'Venda',   cor: '#1D9E75', bg: '#ECFDF5', entrada: true  },
-  receita: { label: 'Receita', cor: '#1D9E75', bg: '#ECFDF5', entrada: true  },
-  compra:  { label: 'Compra',  cor: '#E24B4A', bg: '#FEF2F2', entrada: false },
-  despesa: { label: 'Despesa', cor: '#E24B4A', bg: '#FEF2F2', entrada: false },
+  venda:          { label: 'Venda',          cor: '#1D9E75', bg: '#ECFDF5', entrada: true  },
+  venda_fiado:    { label: 'Fiado',          cor: '#D97706', bg: '#FEF3C7', entrada: false },
+  venda_recebida: { label: 'Venda recebida', cor: '#1D9E75', bg: '#ECFDF5', entrada: true  },
+  receita:        { label: 'Receita',        cor: '#1D9E75', bg: '#ECFDF5', entrada: true  },
+  compra:         { label: 'Compra',         cor: '#E24B4A', bg: '#FEF2F2', entrada: false },
+  despesa:        { label: 'Despesa',        cor: '#E24B4A', bg: '#FEF2F2', entrada: false },
 }
 
 const CAT = {
   leite: 'Folha do leite', animal: 'Venda de animal',
   funcionario: 'Funcionário', energia: 'Energia elétrica',
   combustivel: 'Combustível', manutencao: 'Manutenção',
+  fiado_pago: 'Recebimento fiado',
 }
 
 const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -37,9 +40,14 @@ export default function Lancamentos() {
     setMes(m); setAno(a)
   }
 
+  const tipoKey   = (l) => {
+    if (l.tipo === 'venda' && l.fiado) return 'venda_fiado'
+    if (l.tipo === 'receita' && l.descricao === 'fiado_pago') return 'venda_recebida'
+    return l.tipo
+  }
   const filtrados = filtro === 'todos' ? lista : lista.filter(l => l.tipo === filtro)
-  const entradas  = lista.filter(l => TIPO[l.tipo].entrada).reduce((s, l) => s + Number(l.valor), 0)
-  const saidas    = lista.filter(l => !TIPO[l.tipo].entrada).reduce((s, l) => s + Number(l.valor), 0)
+  const entradas  = lista.filter(l => TIPO[tipoKey(l)].entrada).reduce((s, l) => s + Number(l.valor), 0)
+  const saidas    = lista.filter(l => !TIPO[tipoKey(l)].entrada).reduce((s, l) => s + Number(l.valor), 0)
   const saldo     = entradas - saidas
 
   return (
@@ -90,7 +98,7 @@ export default function Lancamentos() {
           Nenhum lançamento neste período
         </div>
       ) : filtrados.map(l => {
-        const cfg = TIPO[l.tipo]
+        const cfg = TIPO[tipoKey(l)]
         return (
           <div key={`${l.tipo}-${l.id}`} style={{ background: '#fff', borderRadius: '14px', padding: '14px', marginBottom: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
@@ -100,6 +108,7 @@ export default function Lancamentos() {
                     {cfg.label}
                   </span>
                   <span style={{ fontSize: '12px', color: '#9CA3AF' }}>{fmtData(l.data)}</span>
+                  {l.fiado && <span style={{ fontSize: '11px', color: '#D97706' }}>a receber</span>}
                 </div>
                 <div style={{ fontWeight: '600', fontSize: '14px', color: '#111827', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {CAT[l.descricao] || l.descricao}
@@ -119,8 +128,11 @@ export default function Lancamentos() {
                   <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>{l.observacao}</div>
                 )}
               </div>
-              <div style={{ fontSize: '16px', fontWeight: '700', color: cfg.cor, whiteSpace: 'nowrap' }}>
-                {cfg.entrada ? '+' : '−'}{fmt(l.valor)}
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '16px', fontWeight: '700', color: cfg.cor, whiteSpace: 'nowrap' }}>
+                  {cfg.entrada ? '+' : l.fiado ? '' : '−'}{fmt(l.valor)}
+                </div>
+                {l.fiado && <div style={{ fontSize: '10px', color: '#D97706', fontWeight: '600' }}>não recebido</div>}
               </div>
             </div>
           </div>

@@ -12,6 +12,12 @@ const S = {
 
 const TIPOS = [
   {
+    id: 'produzir',
+    titulo: 'Produzi um produto',
+    descricao: 'Ração, mix, concentrado...',
+    cor: '#065F46', bg: '#F0FDF4', borda: '#BBF7D0', iconBg: '#059669', icon: '🏭',
+  },
+  {
     id: 'venda',
     titulo: 'Vendi um produto',
     descricao: 'Ração, sacos, animais...',
@@ -37,6 +43,9 @@ const TIPOS = [
   },
 ]
 
+const fmt    = (v) => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtInt = (v) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+
 export default function Novo() {
   const [tipo, setTipo]           = useState(null)
   const [insumos, setInsumos]     = useState([])
@@ -45,6 +54,8 @@ export default function Novo() {
   const [fornecedores, setFornecedores] = useState([])
   const [fiado, setFiado]         = useState(false)
   const [sucesso, setSucesso]     = useState(false)
+  const [producao, setProducao]   = useState({ produto_id: '', quantidade: '' })
+  const [fichaProducao, setFichaProducao] = useState([])
   const hoje = new Date().toISOString().split('T')[0]
 
   const [venda,   setVenda]   = useState({ produto: '', produto_id: '', quantidade: '', preco_unitario: '', cliente_id: '', data_venda: hoje })
@@ -67,8 +78,18 @@ export default function Novo() {
 
   const salvar = async () => {
     try {
-      if (tipo === 'venda') {
-        await api.post('/lancamentos/venda', venda)
+      if (tipo === 'produzir') {
+        if (!producao.produto_id || !producao.quantidade) { alert('Escolha o produto e informe a quantidade.'); return }
+        await api.post('/estoques/produtos/produzir', {
+          produto_id:     producao.produto_id,
+          quantidade:     parseFloat(producao.quantidade),
+          custo_unitario: 0,
+          motivo:         '',
+        })
+        setProducao({ produto_id: '', quantidade: '' })
+        setFichaProducao([])
+      } else if (tipo === 'venda') {
+        await api.post('/lancamentos/venda', { ...venda, fiado })
         if (fiado && venda.cliente_id && venda.quantidade && venda.preco_unitario) {
           await api.post(`/clientes/${venda.cliente_id}/debitos`, {
             descricao: `${venda.produto} — ${venda.quantidade} un.`,
@@ -93,6 +114,16 @@ export default function Novo() {
       setTipo(null)
     } catch (err) {
       alert('Erro ao salvar: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  const selecionarProdutoProducao = async (id) => {
+    setProducao({ produto_id: id, quantidade: '' })
+    if (id) {
+      const r = await api.get(`/produtos/${id}/insumos`)
+      setFichaProducao(r.data)
+    } else {
+      setFichaProducao([])
     }
   }
 
@@ -144,6 +175,76 @@ export default function Novo() {
               <div style={{ fontSize: '12px', color: '#6B7280' }}>Preencha os dados abaixo</div>
             </div>
           </div>
+
+          {/* ── PRODUZIR ── */}
+          {tipo === 'produzir' && (
+            <>
+              <div style={S.field}>
+                <label style={S.label}>Qual produto você fabricou?</label>
+                <select value={producao.produto_id} onChange={e => selecionarProdutoProducao(e.target.value)} style={S.select}>
+                  <option value="">Escolha o produto...</option>
+                  {produtos.map(p => <option key={p.id} value={p.id}>{p.nome} ({p.unidade})</option>)}
+                </select>
+                <div style={S.dica}>Se não aparece, cadastre em "Produtos" e configure a ficha técnica</div>
+              </div>
+
+              {producao.produto_id && (
+                <div style={S.field}>
+                  <label style={S.label}>Quantas unidades você fabricou?</label>
+                  <input type="number" min="0" step="0.01" value={producao.quantidade}
+                    onChange={e => setProducao({ ...producao, quantidade: e.target.value })}
+                    placeholder="0" style={S.input} />
+                </div>
+              )}
+
+              {fichaProducao.length > 0 && producao.produto_id && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#6B7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Ingredientes que vão ser descontados
+                  </div>
+                  {fichaProducao.map(item => {
+                    const qtdProd        = parseFloat(producao.quantidade) || 0
+                    const peso           = parseFloat(item.peso_por_unidade) || 1
+                    const consumo_kg     = item.quantidade_por_unidade * qtdProd
+                    const disp_nativo    = parseFloat(item.estoque_atual)
+                    const disp_kg        = disp_nativo * peso
+                    const suficiente     = disp_kg >= consumo_kg
+                    const semQtd         = qtdProd === 0
+                    const unidade        = item.componente_unidade || 'kg'
+                    const isKg           = unidade === 'kg'
+                    const consumo_nativo = consumo_kg / peso
+                    return (
+                      <div key={item.id || item.componente_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: '10px', marginBottom: '6px', background: semQtd ? '#F9FAFB' : (suficiente ? '#F0FDF4' : '#FEF2F2'), border: `1px solid ${semQtd ? '#E5E7EB' : (suficiente ? '#BBF7D0' : '#FECACA')}` }}>
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: '#111827' }}>{item.componente_nome}</div>
+                          <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '2px' }}>
+                            Tem no estoque: {fmt(disp_nativo)} {unidade}{!isKg && <span> ({fmt(disp_kg)} kg)</span>}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '10px' }}>
+                          {semQtd ? <span style={{ fontSize: '12px', color: '#9CA3AF' }}>—</span> : (
+                            <>
+                              <div style={{ fontSize: '14px', fontWeight: '700', color: suficiente ? '#166534' : '#B91C1C' }}>
+                                {!isKg ? `${fmt(consumo_nativo)} ${unidade}` : `${fmt(consumo_kg)} kg`}
+                              </div>
+                              {!isKg && <div style={{ fontSize: '11px', color: suficiente ? '#166534' : '#B91C1C' }}>{fmt(consumo_kg)} kg</div>}
+                              {!suficiente && <div style={{ fontSize: '11px', color: '#B91C1C', fontWeight: '600' }}>FALTA {fmt((consumo_kg - disp_kg) / peso)} {unidade}</div>}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {fichaProducao.length === 0 && producao.produto_id && (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '10px', padding: '12px', marginBottom: '16px', fontSize: '13px', color: '#92400E' }}>
+                  Este produto ainda não tem receita cadastrada. Vá em <strong>Produtos → Ficha técnica</strong> para adicionar os ingredientes.
+                </div>
+              )}
+            </>
+          )}
 
           {/* ── VENDA ── */}
           {tipo === 'venda' && (
@@ -343,10 +444,11 @@ export default function Novo() {
           )}
 
           <button onClick={salvar} style={S.btnSave}>
-            {tipo === 'venda'   ? 'Confirmar venda'
-            : tipo === 'compra' ? 'Confirmar compra'
-            : tipo === 'receita'? 'Confirmar entrada'
-            :                     'Confirmar gasto'}
+            {tipo === 'produzir' ? 'Confirmar produção'
+            : tipo === 'venda'   ? 'Confirmar venda'
+            : tipo === 'compra'  ? 'Confirmar compra'
+            : tipo === 'receita' ? 'Confirmar entrada'
+            :                      'Confirmar gasto'}
           </button>
         </>
       )}

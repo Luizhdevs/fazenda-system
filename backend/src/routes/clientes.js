@@ -117,19 +117,45 @@ router.post('/:id/debitos', async (req, res) => {
 
 // PATCH /api/clientes/debitos/:id/pagar
 router.patch('/debitos/:id/pagar', async (req, res) => {
+  const client = await pool.connect();
   try {
-    // Garante que o débito pertence a um cliente do usuário
-    const result = await pool.query(
-      `UPDATE debitos SET pago = true, data_pagamento = CURRENT_DATE
-       WHERE id = $1
-       AND cliente_id IN (SELECT id FROM clientes WHERE fazenda_id = $2)
-       RETURNING *`,
+    await client.query('BEGIN');
+
+    // Busca o débito com dados do cliente
+    const debito = await client.query(
+      `SELECT d.*, c.nome as cliente_nome, c.fazenda_id
+       FROM debitos d
+       JOIN clientes c ON c.id = d.cliente_id
+       WHERE d.id = $1 AND c.fazenda_id = $2 AND d.pago = false`,
       [req.params.id, req.usuario.fazenda_id]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Débito não encontrado' });
-    res.json(result.rows[0]);
+    if (debito.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Débito não encontrado' });
+    }
+
+    const d = debito.rows[0];
+
+    // Marca como pago
+    await client.query(
+      `UPDATE debitos SET pago = true, data_pagamento = CURRENT_DATE WHERE id = $1`,
+      [req.params.id]
+    );
+
+    // Registra o recebimento como receita no mês do pagamento
+    await client.query(
+      `INSERT INTO receitas (categoria, valor, descricao, origem, data_receita, fazenda_id)
+       VALUES ('fiado_pago', $1, $2, $3, CURRENT_DATE, $4)`,
+      [d.valor, d.descricao, d.cliente_nome, d.fazenda_id]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true });
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
