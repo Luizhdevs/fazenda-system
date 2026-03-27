@@ -3,7 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom'
 import api from '../services/api'
 
 const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const fmtData = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
+const fmtData = (d) => {
+  if (!d) return '—'
+  const s = String(d).substring(0, 10) + 'T12:00:00'
+  const dt = new Date(s)
+  return isNaN(dt) ? '—' : dt.toLocaleDateString('pt-BR')
+}
 
 const S = {
   input:     { width: '100%', padding: '10px 12px', border: '1.5px solid #E5E7EB', borderRadius: '10px', fontSize: '14px', background: '#fff', color: '#111827', boxSizing: 'border-box' },

@@ -20,7 +20,12 @@ const CAT = {
 }
 
 const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const fmtData = (d) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+const fmtData = (d) => {
+  if (!d) return ''
+  const s = String(d).substring(0, 10) + 'T12:00:00'
+  const dt = new Date(s)
+  return isNaN(dt) ? '' : dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+}
 
 export default function Lancamentos() {
   const hoje = new Date()
