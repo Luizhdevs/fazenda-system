@@ -101,16 +101,32 @@ router.get('/produtos', async (req, res) => {
               COALESCE(ep.quantidade_atual, 0) as quantidade_atual,
               ep.atualizado_em,
               COALESCE((
-                SELECT SUM(pi.quantidade_por_unidade * COALESCE(e.custo_medio, 0))
+                SELECT SUM(pi.quantidade_por_unidade * COALESCE(e.custo_medio, 0) / NULLIF(i2.peso_por_unidade, 1))
                 FROM produto_insumos pi
+                JOIN insumos i2 ON i2.id = pi.insumo_id
                 LEFT JOIN estoques e ON e.insumo_id = pi.insumo_id
-                WHERE pi.produto_id = p.id
+                WHERE pi.produto_id = p.id AND pi.insumo_id IS NOT NULL
               ), 0) as custo_unitario,
               COALESCE((
-                SELECT MIN(FLOOR(COALESCE(e.quantidade_atual, 0) / NULLIF(pi.quantidade_por_unidade, 0)))
-                FROM produto_insumos pi
-                LEFT JOIN estoques e ON e.insumo_id = pi.insumo_id
-                WHERE pi.produto_id = p.id
+                SELECT MIN(cap) FROM (
+                  SELECT FLOOR(
+                    (COALESCE(e.quantidade_atual, 0) * COALESCE(i2.peso_por_unidade, 1))
+                    / NULLIF(pi.quantidade_por_unidade, 0)
+                  ) as cap
+                  FROM produto_insumos pi
+                  JOIN insumos i2 ON i2.id = pi.insumo_id
+                  LEFT JOIN estoques e ON e.insumo_id = pi.insumo_id
+                  WHERE pi.produto_id = p.id AND pi.insumo_id IS NOT NULL
+                  UNION ALL
+                  SELECT FLOOR(
+                    (COALESCE(ep2.quantidade_atual, 0) * COALESCE(p2.peso_por_unidade, 1))
+                    / NULLIF(pi.quantidade_por_unidade, 0)
+                  ) as cap
+                  FROM produto_insumos pi
+                  JOIN produtos p2 ON p2.id = pi.componente_produto_id
+                  LEFT JOIN estoque_produtos ep2 ON ep2.produto_id = pi.componente_produto_id
+                  WHERE pi.produto_id = p.id AND pi.componente_produto_id IS NOT NULL
+                ) caps
               ), 0) as capacidade_producao,
               EXISTS(SELECT 1 FROM produto_insumos WHERE produto_id = p.id) as tem_ficha
        FROM produtos p
@@ -194,6 +210,7 @@ router.post('/produtos/produzir', async (req, res) => {
               'insumo' as tipo_componente,
               pi.insumo_id as componente_id,
               i.nome as componente_nome, i.unidade,
+              COALESCE(i.peso_por_unidade, 1) as peso_por_unidade,
               COALESCE(e.quantidade_atual, 0) as estoque_atual
        FROM produto_insumos pi
        JOIN insumos i ON i.id = pi.insumo_id
@@ -206,6 +223,7 @@ router.post('/produtos/produzir', async (req, res) => {
               'produto' as tipo_componente,
               pi.componente_produto_id as componente_id,
               p.nome as componente_nome, p.unidade,
+              COALESCE(p.peso_por_unidade, 1) as peso_por_unidade,
               COALESCE(ep.quantidade_atual, 0) as estoque_atual
        FROM produto_insumos pi
        JOIN produtos p ON p.id = pi.componente_produto_id
@@ -220,17 +238,30 @@ router.post('/produtos/produzir', async (req, res) => {
     }
 
     for (const item of ficha.rows) {
-      const necessario = item.quantidade_por_unidade * qtd;
-      if (parseFloat(item.estoque_atual) < necessario) {
+      // quantidade_por_unidade está em kg; estoque pode estar em sacos/litros
+      // convertemos o estoque para kg antes de comparar
+      const peso = parseFloat(item.peso_por_unidade) || 1;
+      const necessario_kg = item.quantidade_por_unidade * qtd;
+      const disponivel_kg = parseFloat(item.estoque_atual) * peso;
+      if (disponivel_kg < necessario_kg) {
         await client.query('ROLLBACK');
+        const dispNativo = parseFloat(item.estoque_atual).toFixed(2);
+        const dispKg = disponivel_kg.toFixed(2);
+        const necKg = necessario_kg.toFixed(2);
+        const label = item.unidade === 'kg'
+          ? `${dispNativo} kg`
+          : `${dispNativo} ${item.unidade} (${dispKg} kg)`;
         return res.status(400).json({
-          error: `Estoque insuficiente de "${item.componente_nome}": disponível ${parseFloat(item.estoque_atual).toFixed(2)} ${item.unidade}, necessário ${necessario.toFixed(2)} ${item.unidade}`
+          error: `Estoque insuficiente de "${item.componente_nome}": disponível ${label}, necessário ${necKg} kg`
         });
       }
     }
 
     for (const item of ficha.rows) {
-      const novaQtd = parseFloat(item.estoque_atual) - item.quantidade_por_unidade * qtd;
+      const peso = parseFloat(item.peso_por_unidade) || 1;
+      // converte kg necessários de volta para a unidade nativa do insumo
+      const consumo_nativo = (item.quantidade_por_unidade * qtd) / peso;
+      const novaQtd = parseFloat(item.estoque_atual) - consumo_nativo;
       if (item.tipo_componente === 'insumo') {
         await client.query(
           `UPDATE estoques SET quantidade_atual = $1, atualizado_em = NOW() WHERE insumo_id = $2`,

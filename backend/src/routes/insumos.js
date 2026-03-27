@@ -17,11 +17,12 @@ router.get('/', async (req, res) => {
 
 // POST /api/insumos
 router.post('/', async (req, res) => {
-  const { nome, tipo, unidade } = req.body;
+  const { nome, tipo, unidade, peso_por_unidade } = req.body;
+  const peso = unidade === 'kg' ? 1 : (parseFloat(peso_por_unidade) || 1);
   try {
     const result = await pool.query(
-      'INSERT INTO insumos (nome, tipo, unidade, fazenda_id) VALUES ($1, $2, $3, $4) RETURNING *',
-      [nome, tipo, unidade, req.usuario.fazenda_id]
+      'INSERT INTO insumos (nome, tipo, unidade, peso_por_unidade, fazenda_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [nome, tipo, unidade, peso, req.usuario.fazenda_id]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -31,11 +32,12 @@ router.post('/', async (req, res) => {
 
 // PUT /api/insumos/:id
 router.put('/:id', async (req, res) => {
-  const { nome, tipo, unidade } = req.body;
+  const { nome, tipo, unidade, peso_por_unidade } = req.body;
+  const peso = unidade === 'kg' ? 1 : (parseFloat(peso_por_unidade) || 1);
   try {
     const result = await pool.query(
-      'UPDATE insumos SET nome = $1, tipo = $2, unidade = $3 WHERE id = $4 AND fazenda_id = $5 RETURNING *',
-      [nome, tipo, unidade, req.params.id, req.usuario.fazenda_id]
+      'UPDATE insumos SET nome = $1, tipo = $2, unidade = $3, peso_por_unidade = $4 WHERE id = $5 AND fazenda_id = $6 RETURNING *',
+      [nome, tipo, unidade, peso, req.params.id, req.usuario.fazenda_id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Insumo não encontrado' });
     res.json(result.rows[0]);

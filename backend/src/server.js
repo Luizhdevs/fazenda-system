@@ -22,7 +22,8 @@ app.use('/api/dashboard',  comFazenda, require('./routes/dashboard'));
 app.use('/api/produtos',   comFazenda, require('./routes/produtos'));
 app.use('/api/clientes',   comFazenda, require('./routes/clientes'));
 app.use('/api/insumos',    comFazenda, require('./routes/insumos'));
-app.use('/api/fornecedores', comFazenda, require('./routes/fornecedores'));
+app.use('/api/fornecedores',  comFazenda, require('./routes/fornecedores'));
+app.use('/api/funcionarios', comFazenda, require('./routes/funcionarios'));
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));

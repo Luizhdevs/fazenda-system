@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
-import ProtectedRoute from './components/ProtectedRoute'
+import ProtectedRoute, { AdminRoute } from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import SelecionarFazenda from './pages/SelecionarFazenda'
@@ -15,6 +15,9 @@ import Novo from './pages/Novo'
 import Painel from './pages/Painel'
 import Produtos from './pages/Produtos'
 import Relatorio from './pages/Relatorio'
+import Admin from './pages/Admin'
+import Funcionarios from './pages/Funcionarios'
+import FuncionarioDetalhe from './pages/FuncionarioDetalhe'
 
 // Guard para /selecionar-fazenda: só acessível se logado mas sem fazenda selecionada
 function SelecionarFazendaGuard() {
@@ -50,6 +53,9 @@ function App() {
         <Route path="estoque" element={<Estoque />} />
         <Route path="insumos" element={<Insumos />} />
         <Route path="relatorio" element={<Relatorio />} />
+        <Route path="funcionarios" element={<Funcionarios />} />
+        <Route path="funcionarios/:id" element={<FuncionarioDetalhe />} />
+        <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
       </Route>
     </Routes>
   )

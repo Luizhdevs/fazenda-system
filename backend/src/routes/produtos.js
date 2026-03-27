@@ -8,10 +8,11 @@ router.get('/', async (req, res) => {
     const result = await pool.query(
       `SELECT p.*,
         COALESCE((
-          SELECT SUM(pi.quantidade_por_unidade * COALESCE(e.custo_medio, 0))
+          SELECT SUM(pi.quantidade_por_unidade * COALESCE(e.custo_medio, 0) / NULLIF(COALESCE(i2.peso_por_unidade, 1), 0))
           FROM produto_insumos pi
+          JOIN insumos i2 ON i2.id = pi.insumo_id
           LEFT JOIN estoques e ON e.insumo_id = pi.insumo_id
-          WHERE pi.produto_id = p.id
+          WHERE pi.produto_id = p.id AND pi.insumo_id IS NOT NULL
         ), 0) as custo_producao
        FROM produtos p
        WHERE p.fazenda_id = $1 AND p.ativo = true
@@ -26,11 +27,12 @@ router.get('/', async (req, res) => {
 
 // POST /api/produtos
 router.post('/', async (req, res) => {
-  const { nome, unidade } = req.body;
+  const { nome, unidade, peso_por_unidade } = req.body;
+  const peso = unidade === 'kg' ? 1 : (parseFloat(peso_por_unidade) || 1);
   try {
     const result = await pool.query(
-      'INSERT INTO produtos (nome, unidade, fazenda_id) VALUES ($1, $2, $3) RETURNING *',
-      [nome, unidade, req.usuario.fazenda_id]
+      'INSERT INTO produtos (nome, unidade, peso_por_unidade, fazenda_id) VALUES ($1, $2, $3, $4) RETURNING *',
+      [nome, unidade, peso, req.usuario.fazenda_id]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -40,11 +42,12 @@ router.post('/', async (req, res) => {
 
 // PUT /api/produtos/:id
 router.put('/:id', async (req, res) => {
-  const { nome, unidade } = req.body;
+  const { nome, unidade, peso_por_unidade } = req.body;
+  const peso = unidade === 'kg' ? 1 : (parseFloat(peso_por_unidade) || 1);
   try {
     const result = await pool.query(
-      'UPDATE produtos SET nome = $1, unidade = $2 WHERE id = $3 AND fazenda_id = $4 RETURNING *',
-      [nome, unidade, req.params.id, req.usuario.fazenda_id]
+      'UPDATE produtos SET nome = $1, unidade = $2, peso_por_unidade = $3 WHERE id = $4 AND fazenda_id = $5 RETURNING *',
+      [nome, unidade, peso, req.params.id, req.usuario.fazenda_id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Produto não encontrado' });
     res.json(result.rows[0]);
@@ -82,6 +85,7 @@ router.get('/:id/insumos', async (req, res) => {
               pi.insumo_id      as componente_id,
               i.nome            as componente_nome,
               i.unidade         as componente_unidade,
+              COALESCE(i.peso_por_unidade, 1) as peso_por_unidade,
               i.tipo            as tipo,
               COALESCE(e.quantidade_atual, 0) as estoque_atual,
               COALESCE(e.custo_medio, 0)      as custo_medio
@@ -97,6 +101,7 @@ router.get('/:id/insumos', async (req, res) => {
               pi.componente_produto_id as componente_id,
               p.nome                   as componente_nome,
               p.unidade                as componente_unidade,
+              COALESCE(p.peso_por_unidade, 1) as peso_por_unidade,
               'produto'                as tipo,
               COALESCE(ep.quantidade_atual, 0) as estoque_atual,
               COALESCE((
