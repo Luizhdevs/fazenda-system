@@ -63,16 +63,13 @@ Insumos: ${JSON.stringify(insumos.rows)}
 Clientes: ${JSON.stringify(clientes.rows)}
 Fornecedores: ${JSON.stringify(fornecedores.rows)}`;
 
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-lite',
-      systemInstruction: SYSTEM_PROMPT,
-    });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
 
     const response = await model.generateContent(
-      `Contexto:\n${contexto}\n\nTexto: "${texto}"`
+      `${SYSTEM_PROMPT}\n\nContexto:\n${contexto}\n\nTexto: "${texto}"`
     );
 
-    const textContent = response.response.text().replace(/```json|```/g, '').trim();
+    const textContent = response.response.text().replace(/```json\n?|```/g, '').trim();
 
     let resultado;
     try {
