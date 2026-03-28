@@ -88,7 +88,7 @@ export default function Layout() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '72px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))' }}>
         <Outlet />
       </div>
 
@@ -98,6 +98,7 @@ export default function Layout() {
         background: '#fff', borderTop: '1px solid #E5E7EB',
         boxShadow: '0 -2px 12px rgba(0,0,0,0.08)', zIndex: 100,
         display: 'flex', overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}>
         <style>{`nav::-webkit-scrollbar { display: none; }`}</style>
         {NAV.map(({ to, icon, label }) => (
