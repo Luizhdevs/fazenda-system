@@ -59,7 +59,7 @@ export default function Novo() {
   const hoje = new Date().toISOString().split('T')[0]
 
   const [venda,   setVenda]   = useState({ produto: '', produto_id: '', quantidade: '', preco_unitario: '', cliente_id: '', data_venda: hoje })
-  const [compra,  setCompra]  = useState({ insumo_id: '', fornecedor: '', quantidade: '', preco_unitario: '', data_compra: hoje })
+  const [compra,  setCompra]  = useState({ insumo_id: '', fornecedor: '', fornecedor_id: '', quantidade: '', preco_unitario: '', data_compra: hoje })
   const [receita, setReceita] = useState({ categoria: 'leite', valor: '', descricao: '', origem: '', data_receita: hoje })
   const [despesa, setDespesa] = useState({ categoria: 'energia', valor: '', descricao: '', data_despesa: hoje })
 
@@ -101,7 +101,7 @@ export default function Novo() {
         setVenda(v => ({ ...v, quantidade: '', preco_unitario: '', cliente_id: '' }))
       } else if (tipo === 'compra') {
         await api.post('/lancamentos/compra', compra)
-        setCompra(c => ({ ...c, quantidade: '', preco_unitario: '', fornecedor: '' }))
+        setCompra(c => ({ ...c, quantidade: '', preco_unitario: '', fornecedor: '', fornecedor_id: '' }))
       } else if (tipo === 'receita') {
         await api.post('/lancamentos/receita', receita)
         setReceita(r => ({ ...r, valor: '', descricao: '' }))
@@ -359,10 +359,13 @@ export default function Novo() {
 
               <div style={S.field}>
                 <label style={S.label}>Comprou de quem? (opcional)</label>
-                <select value={compra.fornecedor}
-                  onChange={e => setCompra({...compra, fornecedor: e.target.value})} style={S.select}>
+                <select value={compra.fornecedor_id}
+                  onChange={e => {
+                    const f = fornecedores.find(x => x.id === e.target.value)
+                    setCompra({...compra, fornecedor_id: e.target.value, fornecedor: f?.nome || ''})
+                  }} style={S.select}>
                   <option value=''>Não precisa informar</option>
-                  {fornecedores.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
+                  {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                 </select>
               </div>
 

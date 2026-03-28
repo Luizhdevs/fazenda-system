@@ -40,12 +40,12 @@ POST /clientes → {nome, telefone?}
 POST /insumos → {nome, tipo:"graos"|"proteina"|"mineral"|"outro", unidade:"kg"|"saco"|"litro"}
 POST /produtos → {nome, unidade:"kg"|"unidade"|"litro"}
 POST /produtos/$produto_id/insumos → {insumo_id, quantidade_por_unidade} ← SEMPRE em kg por unidade
-POST /lancamentos/compra → {insumo_id, quantidade, preco_unitario, fornecedor_id?, data_compra}
+POST /lancamentos/compra → {insumo_id, quantidade, preco_unitario, fornecedor_id?, fornecedor?, data_compra} ← USE SEMPRE ESTE para registrar compra de insumo. Já atualiza o estoque automaticamente.
 POST /lancamentos/venda → {produto_id, produto:string, quantidade, preco_unitario, cliente_id?, fiado:bool, data_venda}
 POST /lancamentos/receita → {categoria:"leite"|"animal"|"outro", valor, descricao, data_receita}
 POST /lancamentos/despesa → {categoria:"energia"|"combustivel"|"manutencao"|"veterinario"|"impostos"|"outro", valor, descricao, data_despesa}
 POST /estoques/produtos/produzir → {produto_id, quantidade}
-POST /estoques/ajuste → {insumo_id, tipo:"entrada"|"saida", quantidade, preco_unitario?, observacao?}
+⚠️ PROIBIDO usar /estoques/ajuste para registrar compras. Este endpoint NÃO cria lançamento financeiro.
 
 FLUXOS OBRIGATÓRIOS:
 
@@ -82,12 +82,13 @@ DESPESA:
 Perguntar categoria, valor, descrição → confirmar
 
 REGRAS DE NEGÓCIO:
-- Compra SEMPRE alimenta o estoque do insumo
+- Compra de insumo: use SEMPRE /lancamentos/compra — ele cria o registro financeiro E atualiza o estoque. NUNCA use /estoques/ajuste para compras.
 - Venda SEMPRE desconta do estoque do produto
 - Produzir SEMPRE consome insumos e gera produto
 - Fiado = produto saiu mas não foi pago ainda
 - data padrão = hoje se não mencionada
-- quantidade_por_unidade da ficha técnica é SEMPRE em kg`;
+- quantidade_por_unidade da ficha técnica é SEMPRE em kg
+- Se o usuário tem um fornecedor cadastrado: envie fornecedor_id E fornecedor (nome) no passo da compra`;
 
 router.post('/chat', async (req, res) => {
   const { mensagem, historico = [] } = req.body;

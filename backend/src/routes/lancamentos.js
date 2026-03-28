@@ -22,10 +22,13 @@ router.get('/', async (req, res) => {
     );
 
     const compras = await pool.query(
-      `SELECT c.id, 'compra' as tipo, i.nome as descricao, c.fornecedor as cliente,
+      `SELECT c.id, 'compra' as tipo, COALESCE(i.nome, 'Insumo removido') as descricao,
+              COALESCE(c.fornecedor, f.nome) as cliente,
               c.quantidade, c.preco_unitario, c.preco_total as valor,
               c.data_compra as data, c.observacao
-       FROM compras c JOIN insumos i ON c.insumo_id = i.id
+       FROM compras c
+       LEFT JOIN insumos i ON c.insumo_id = i.id
+       LEFT JOIN fornecedores f ON c.fornecedor_id = f.id
        WHERE c.fazenda_id = $1
          AND EXTRACT(MONTH FROM c.data_compra) = $2 AND EXTRACT(YEAR FROM c.data_compra) = $3
        ORDER BY c.data_compra DESC`,
