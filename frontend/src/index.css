@@ -35,9 +35,10 @@ body {
   touch-action: pan-y;
 }
 
-/* Shell fixo: o app ocupa a tela toda e não se move quando o teclado abre */
+/* Shell fixo: altura travada na altura real da tela (--vh definido em main.jsx).
+   O teclado não altera esse valor, então o layout não se move. */
 #root {
-  height: 100dvh;
+  height: calc(var(--vh, 1vh) * 100);
   overflow: hidden;
 }
 

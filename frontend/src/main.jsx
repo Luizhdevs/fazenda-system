@@ -10,6 +10,14 @@ import './index.css'
 // Se não configurado, o botão do Google simplesmente não aparece
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 
+// Trava a altura real da tela numa variável CSS.
+// Só atualiza ao girar o celular — o teclado NÃO altera o layout.
+function _setVH() {
+  document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`)
+}
+_setVH()
+window.addEventListener('orientationchange', () => setTimeout(_setVH, 300))
+
 // Bloqueia zoom por pinça e duplo-toque no iOS (Safari ignora user-scalable desde iOS 10)
 document.addEventListener('touchmove', (e) => {
   if (e.touches.length > 1) e.preventDefault()
