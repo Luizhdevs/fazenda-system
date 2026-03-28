@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const SYSTEM_PROMPT = `Você é um assistente para um sistema de gestão de fazenda brasileiro. Interprete o texto do usuário e extraia os dados para registrar no sistema.
 
@@ -63,17 +63,16 @@ Insumos: ${JSON.stringify(insumos.rows)}
 Clientes: ${JSON.stringify(clientes.rows)}
 Fornecedores: ${JSON.stringify(fornecedores.rows)}`;
 
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [{
-        role: 'user',
-        content: `Contexto:\n${contexto}\n\nTexto: "${texto}"`,
-      }],
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash',
+      systemInstruction: SYSTEM_PROMPT,
     });
 
-    const textContent = response.content.find(b => b.type === 'text')?.text || '{}';
+    const response = await model.generateContent(
+      `Contexto:\n${contexto}\n\nTexto: "${texto}"`
+    );
+
+    const textContent = response.response.text().replace(/```json|```/g, '').trim();
 
     let resultado;
     try {
