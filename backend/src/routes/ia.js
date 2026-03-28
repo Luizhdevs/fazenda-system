@@ -49,10 +49,10 @@ router.post('/interpretar', async (req, res) => {
 
   try {
     const [produtos, insumos, clientes, fornecedores] = await Promise.all([
-      pool.query('SELECT id, nome, unidade FROM produtos WHERE fazenda_id = $1 AND ativo = true ORDER BY nome', [fazenda_id]),
-      pool.query('SELECT id, nome, unidade FROM insumos WHERE fazenda_id = $1 AND ativo = true ORDER BY nome', [fazenda_id]),
-      pool.query('SELECT id, nome FROM clientes WHERE fazenda_id = $1 AND ativo = true ORDER BY nome', [fazenda_id]),
-      pool.query('SELECT id, nome FROM fornecedores WHERE fazenda_id = $1 AND ativo = true ORDER BY nome', [fazenda_id]),
+      pool.query('SELECT id, nome, unidade FROM produtos WHERE fazenda_id = $1 ORDER BY nome', [fazenda_id]),
+      pool.query('SELECT id, nome, unidade FROM insumos WHERE fazenda_id = $1 ORDER BY nome', [fazenda_id]),
+      pool.query('SELECT id, nome FROM clientes WHERE fazenda_id = $1 ORDER BY nome', [fazenda_id]),
+      pool.query('SELECT id, nome FROM fornecedores WHERE fazenda_id = $1 ORDER BY nome', [fazenda_id]),
     ]);
 
     const hoje = new Date().toISOString().split('T')[0];
@@ -64,7 +64,7 @@ Clientes: ${JSON.stringify(clientes.rows)}
 Fornecedores: ${JSON.stringify(fornecedores.rows)}`;
 
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.0-flash-lite',
       systemInstruction: SYSTEM_PROMPT,
     });
 
@@ -88,8 +88,8 @@ Fornecedores: ${JSON.stringify(fornecedores.rows)}`;
 
     res.json(resultado);
   } catch (err) {
-    console.error('Erro IA:', err.message);
-    res.status(500).json({ erro: 'Erro ao processar texto' });
+    console.error('Erro IA completo:', err);
+    res.status(500).json({ erro: err.message || 'Erro ao processar texto' });
   }
 });
 
