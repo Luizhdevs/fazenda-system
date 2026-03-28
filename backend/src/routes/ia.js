@@ -5,72 +5,157 @@ const Groq = require('groq-sdk');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const SYSTEM_PROMPT = `Você é um assistente para um sistema de gestão de fazenda brasileiro. Interprete o texto do usuário e extraia os dados para registrar no sistema.
+const SYSTEM_PROMPT = `Você é FazendaBot, assistente de gestão de fazenda brasileiro. Guia o usuário passo a passo para registrar dados no sistema. O usuário pode ser leigo em tecnologia — seja simples, direto e amigável.
 
-Responda APENAS com JSON válido, sem markdown, sem texto adicional.
+REGRAS OBRIGATÓRIAS:
+1. Faça UMA pergunta por vez
+2. Sempre verifique os dados do contexto antes de criar qualquer entidade
+3. Só crie entidades que não existem no contexto
+4. Confirme TUDO antes de executar
+5. Nunca registre venda de produto que não está cadastrado — oriente o usuário a cadastrar primeiro
+6. Quantidades e preços sempre numéricos (sem R$, sem unidades no valor)
 
-Formato obrigatório:
+FORMATO DE RESPOSTA — sempre JSON válido, sem markdown:
+
+Pergunta/mensagem normal:
+{"acao": "mensagem", "texto": "sua mensagem"}
+
+Confirmação antes de executar:
 {
-  "tipo": "venda" | "compra" | "receita" | "despesa" | "producao" | "desconhecido",
-  "confianca": "alta" | "media" | "baixa",
-  "mensagem": "texto curto confirmando o que entendeu",
-  "dados": { ... }
+  "acao": "confirmacao",
+  "texto": "Resumo do que será feito:",
+  "itens": ["Criar fornecedor: João", "Criar insumo: ração (saco)", "Registrar compra: 3 sacos × R$150 = R$450"],
+  "passos": [
+    {"metodo": "POST", "endpoint": "/fornecedores", "dados": {"nome": "João"}, "salvar_como": "fornecedor_id"},
+    {"metodo": "POST", "endpoint": "/insumos", "dados": {"nome": "ração", "tipo": "proteina", "unidade": "saco"}, "salvar_como": "insumo_id"},
+    {"metodo": "POST", "endpoint": "/lancamentos/compra", "dados": {"insumo_id": "$insumo_id", "quantidade": 3, "preco_unitario": 150, "fornecedor_id": "$fornecedor_id", "data_compra": "2024-01-15"}}
+  ]
 }
 
-Campos por tipo (inclua apenas os relevantes):
+Use $nome_variavel para referenciar IDs gerados em passos anteriores.
 
-venda: produto_nome, produto_id, quantidade (número), preco_unitario (número), preco_total (número), cliente_nome, cliente_id, fiado (boolean), data (YYYY-MM-DD)
+ENDPOINTS DISPONÍVEIS:
+POST /fornecedores → {nome, telefone?}
+POST /clientes → {nome, telefone?}
+POST /insumos → {nome, tipo:"graos"|"proteina"|"mineral"|"outro", unidade:"kg"|"saco"|"litro"}
+POST /produtos → {nome, unidade:"kg"|"unidade"|"litro"}
+POST /produtos/$produto_id/insumos → {insumo_id, quantidade_por_unidade} ← SEMPRE em kg por unidade
+POST /lancamentos/compra → {insumo_id, quantidade, preco_unitario, fornecedor_id?, data_compra}
+POST /lancamentos/venda → {produto_id, produto:string, quantidade, preco_unitario, cliente_id?, fiado:bool, data_venda}
+POST /lancamentos/receita → {categoria:"leite"|"animal"|"outro", valor, descricao, data_receita}
+POST /lancamentos/despesa → {categoria:"energia"|"combustivel"|"manutencao"|"veterinario"|"impostos"|"outro", valor, descricao, data_despesa}
+POST /estoques/produtos/produzir → {produto_id, quantidade}
+POST /estoques/ajuste → {insumo_id, tipo:"entrada"|"saida", quantidade, preco_unitario?, observacao?}
 
-compra: insumo_nome, insumo_id, quantidade (número), preco_unitario (número), preco_total (número), fornecedor_nome, fornecedor_id, data (YYYY-MM-DD)
+FLUXOS OBRIGATÓRIOS:
 
-receita: categoria ("leite" | "animal" | "outro"), valor (número), descricao, data (YYYY-MM-DD)
+COMPRA DE INSUMO:
+1. Insumo existe no contexto? Se não: perguntar tipo (graos/proteina/mineral/outro) e unidade (kg/saco/litro)
+2. Fornecedor existe? Se não: perguntar se quer cadastrar (nome e telefone opcional) — pode pular
+3. Quantidade e preço por unidade
+4. Confirmar
 
-despesa: categoria ("energia" | "combustivel" | "manutencao" | "veterinario" | "impostos" | "outro"), valor (número), descricao, data (YYYY-MM-DD)
+VENDA DE PRODUTO:
+1. Produto existe e tem estoque? Se não: não registrar — dizer "produto não cadastrado, quer cadastrar antes?"
+2. Cliente existe? Se não: perguntar se quer cadastrar — pode pular
+3. Quantidade e preço
+4. É fiado (cliente levou sem pagar)? → pergunta simples sim/não
+5. Confirmar
 
-producao: produto_nome, produto_id, quantidade (número), data (YYYY-MM-DD)
+CADASTRO DE PRODUTO COM FICHA TÉCNICA:
+1. Criar produto (nome + unidade)
+2. Perguntar quais insumos fazem parte da receita
+3. Para cada insumo: verificar se existe, criar se necessário
+4. Para cada insumo: quantidade em kg por unidade do produto
+5. Confirmar tudo de uma vez
 
-Regras:
-- Para valores monetários, extraia apenas o número (sem R$, sem vírgulas)
-- Se o preço total não for mencionado, calcule: quantidade × preco_unitario
-- Se a data não for mencionada, use a data de hoje
-- Tente encontrar o produto/insumo/cliente/fornecedor mais próximo pelo nome na lista do contexto
-- Se "fiado" não for mencionado, use false
-- Para "compra de ração/insumo" → tipo compra; para "venda de produto" → tipo venda
-- Para "receita de leite" → tipo receita, categoria leite
-- Para "conta de luz/energia" → tipo despesa, categoria energia`;
+PRODUZIR:
+1. Verificar se produto tem ficha técnica (estará no contexto)
+2. Verificar estoque dos insumos necessários
+3. Perguntar quantidade a produzir
+4. Confirmar
 
-router.post('/interpretar', async (req, res) => {
-  const { texto } = req.body;
+RECEITA DE LEITE / VENDA DE ANIMAL:
+Perguntar valor e data → confirmar direto
+
+DESPESA:
+Perguntar categoria, valor, descrição → confirmar
+
+REGRAS DE NEGÓCIO:
+- Compra SEMPRE alimenta o estoque do insumo
+- Venda SEMPRE desconta do estoque do produto
+- Produzir SEMPRE consome insumos e gera produto
+- Fiado = produto saiu mas não foi pago ainda
+- data padrão = hoje se não mencionada
+- quantidade_por_unidade da ficha técnica é SEMPRE em kg`;
+
+router.post('/chat', async (req, res) => {
+  const { mensagem, historico = [] } = req.body;
   const fazenda_id = req.usuario.fazenda_id;
 
-  if (!texto || !texto.trim()) {
-    return res.status(400).json({ erro: 'Texto obrigatório' });
+  if (!mensagem || !mensagem.trim()) {
+    return res.status(400).json({ erro: 'Mensagem obrigatória' });
   }
 
   try {
-    const [produtos, insumos, clientes, fornecedores] = await Promise.all([
-      pool.query('SELECT id, nome, unidade FROM produtos WHERE fazenda_id = $1 ORDER BY nome', [fazenda_id]),
-      pool.query('SELECT id, nome, unidade FROM insumos WHERE fazenda_id = $1 ORDER BY nome', [fazenda_id]),
-      pool.query('SELECT id, nome FROM clientes WHERE fazenda_id = $1 ORDER BY nome', [fazenda_id]),
-      pool.query('SELECT id, nome FROM fornecedores WHERE fazenda_id = $1 ORDER BY nome', [fazenda_id]),
+    const [estoque_produtos, estoque_insumos, clientes, fornecedores, fichas] = await Promise.all([
+      pool.query(`
+        SELECT p.id, p.nome, p.unidade, COALESCE(ep.quantidade_atual, 0) as estoque
+        FROM produtos p
+        LEFT JOIN estoque_produtos ep ON ep.produto_id = p.id
+        WHERE p.fazenda_id = $1 ORDER BY p.nome`, [fazenda_id]),
+      pool.query(`
+        SELECT i.id, i.nome, i.unidade, i.tipo, COALESCE(e.quantidade_atual, 0) as estoque, COALESCE(e.custo_medio, 0) as custo_medio
+        FROM insumos i
+        LEFT JOIN estoques e ON e.insumo_id = i.id
+        WHERE i.fazenda_id = $1 ORDER BY i.nome`, [fazenda_id]),
+      pool.query('SELECT id, nome, telefone FROM clientes WHERE fazenda_id = $1 ORDER BY nome', [fazenda_id]),
+      pool.query('SELECT id, nome, telefone FROM fornecedores WHERE fazenda_id = $1 ORDER BY nome', [fazenda_id]),
+      pool.query(`
+        SELECT p.id as produto_id, p.nome as produto_nome,
+               json_agg(json_build_object('insumo_id', i.id, 'insumo_nome', i.nome, 'quantidade_por_unidade', pi.quantidade_por_unidade)) as insumos
+        FROM produtos p
+        JOIN produto_insumos pi ON pi.produto_id = p.id
+        JOIN insumos i ON i.id = pi.insumo_id
+        WHERE p.fazenda_id = $1
+        GROUP BY p.id, p.nome`, [fazenda_id]),
     ]);
 
     const hoje = new Date().toISOString().split('T')[0];
 
-    const contexto = `Data de hoje: ${hoje}
-Produtos: ${JSON.stringify(produtos.rows)}
-Insumos: ${JSON.stringify(insumos.rows)}
-Clientes: ${JSON.stringify(clientes.rows)}
-Fornecedores: ${JSON.stringify(fornecedores.rows)}`;
+    const contexto = `Data hoje: ${hoje}
+
+Produtos (com estoque):
+${JSON.stringify(estoque_produtos.rows)}
+
+Insumos (com estoque):
+${JSON.stringify(estoque_insumos.rows)}
+
+Fichas técnicas:
+${JSON.stringify(fichas.rows)}
+
+Clientes:
+${JSON.stringify(clientes.rows)}
+
+Fornecedores:
+${JSON.stringify(fornecedores.rows)}`;
+
+    // Limita histórico para não estourar tokens
+    const historicoRecente = historico.slice(-10);
+
+    const messages = [
+      ...historicoRecente,
+      { role: 'user', content: `[CONTEXTO ATUAL DO SISTEMA]\n${contexto}\n\n[MENSAGEM]\n${mensagem}` },
+    ];
 
     const response = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `Contexto:\n${contexto}\n\nTexto: "${texto}"` },
+        ...messages,
       ],
       temperature: 0.1,
-      max_tokens: 1024,
+      max_tokens: 2048,
     });
 
     const textContent = response.choices[0].message.content.replace(/```json\n?|```/g, '').trim();
@@ -79,18 +164,19 @@ Fornecedores: ${JSON.stringify(fornecedores.rows)}`;
     try {
       resultado = JSON.parse(textContent);
     } catch {
-      resultado = {
-        tipo: 'desconhecido',
-        confianca: 'baixa',
-        mensagem: 'Não entendi, pode reformular?',
-        dados: {},
-      };
+      resultado = { acao: 'mensagem', texto: textContent };
     }
 
-    res.json(resultado);
+    const historico_atualizado = [
+      ...historicoRecente,
+      { role: 'user', content: mensagem },
+      { role: 'assistant', content: JSON.stringify(resultado) },
+    ];
+
+    res.json({ resposta: resultado, historico_atualizado });
   } catch (err) {
-    console.error('Erro IA completo:', err);
-    res.status(500).json({ erro: err.message || 'Erro ao processar texto' });
+    console.error('Erro IA chat:', err);
+    res.status(500).json({ erro: err.message || 'Erro ao processar' });
   }
 });
 

@@ -1,253 +1,193 @@
 import { useState, useRef, useEffect } from 'react'
 import api from '../services/api'
 
-const TIPO_LABEL = {
-  venda: 'Venda',
-  compra: 'Compra',
-  receita: 'Receita',
-  despesa: 'Despesa',
-  producao: 'Produção',
-}
+async function executarPassos(passos) {
+  const vars = {}
 
-const TIPO_COR = {
-  venda: '#1D9E75',
-  compra: '#3B82F6',
-  receita: '#10B981',
-  despesa: '#EF4444',
-  producao: '#8B5CF6',
-}
-
-const CAT_DESPESA = {
-  energia: 'Energia',
-  combustivel: 'Combustível',
-  manutencao: 'Manutenção',
-  veterinario: 'Veterinário',
-  impostos: 'Impostos',
-  outro: 'Outro',
-}
-
-const CAT_RECEITA = {
-  leite: 'Leite',
-  animal: 'Animal',
-  outro: 'Outro',
-}
-
-function formatMoeda(v) {
-  if (!v && v !== 0) return '—'
-  return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
-function ResumoCard({ resultado, onConfirmar, onCancelar, confirmando }) {
-  const { tipo, mensagem, dados, confianca } = resultado
-  if (tipo === 'desconhecido') {
-    return (
-      <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '12px', padding: '16px' }}>
-        <p style={{ margin: 0, color: '#DC2626', fontSize: '14px' }}>{mensagem}</p>
-      </div>
-    )
+  function resolverDados(dados) {
+    const resolvido = {}
+    for (const [k, v] of Object.entries(dados)) {
+      if (typeof v === 'string' && v.startsWith('$')) {
+        resolvido[k] = vars[v.slice(1)] ?? v
+      } else {
+        resolvido[k] = v
+      }
+    }
+    return resolvido
   }
 
-  const cor = TIPO_COR[tipo] || '#6B7280'
+  for (const passo of passos) {
+    const dados = resolverDados(passo.dados || {})
+    const endpoint = passo.endpoint.replace(/\$(\w+)/g, (_, nome) => vars[nome] ?? _)
 
+    let res
+    if (passo.metodo === 'POST') {
+      res = await api.post(endpoint, dados)
+    } else if (passo.metodo === 'PUT') {
+      res = await api.put(endpoint, dados)
+    } else if (passo.metodo === 'DELETE') {
+      res = await api.delete(endpoint)
+    }
+
+    if (passo.salvar_como && res?.data?.id) {
+      vars[passo.salvar_como] = res.data.id
+    }
+  }
+}
+
+function BotMsg({ children }) {
   return (
-    <div style={{ background: '#fff', border: `2px solid ${cor}`, borderRadius: '12px', overflow: 'hidden' }}>
-      <div style={{ background: cor, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ color: '#fff', fontWeight: '700', fontSize: '14px' }}>{TIPO_LABEL[tipo] || tipo}</span>
-        {confianca === 'baixa' && (
-          <span style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: '11px', padding: '2px 8px', borderRadius: '999px' }}>
-            verificar
-          </span>
-        )}
-      </div>
-      <div style={{ padding: '14px 16px' }}>
-        <p style={{ margin: '0 0 12px', color: '#374151', fontSize: '14px', fontStyle: 'italic' }}>{mensagem}</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
-          {dados.produto_nome && <Campo label="Produto" valor={dados.produto_nome} />}
-          {dados.insumo_nome && <Campo label="Insumo" valor={dados.insumo_nome} />}
-          {dados.quantidade && <Campo label="Quantidade" valor={`${dados.quantidade}`} />}
-          {dados.preco_unitario && <Campo label="Preço unitário" valor={formatMoeda(dados.preco_unitario)} />}
-          {dados.preco_total && <Campo label="Total" valor={formatMoeda(dados.preco_total)} destaque />}
-          {dados.valor && <Campo label="Valor" valor={formatMoeda(dados.valor)} destaque />}
-          {dados.cliente_nome && <Campo label="Cliente" valor={dados.cliente_nome} />}
-          {dados.fornecedor_nome && <Campo label="Fornecedor" valor={dados.fornecedor_nome} />}
-          {dados.fiado && <Campo label="Fiado" valor="Sim" />}
-          {dados.categoria && <Campo label="Categoria" valor={CAT_DESPESA[dados.categoria] || CAT_RECEITA[dados.categoria] || dados.categoria} />}
-          {dados.descricao && <Campo label="Descrição" valor={dados.descricao} />}
-          {dados.data && <Campo label="Data" valor={new Date(dados.data + 'T12:00:00').toLocaleDateString('pt-BR')} />}
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            onClick={onConfirmar}
-            disabled={confirmando}
-            style={{
-              flex: 1, background: cor, color: '#fff', border: 'none',
-              borderRadius: '8px', padding: '10px', fontSize: '14px',
-              fontWeight: '700', cursor: confirmando ? 'not-allowed' : 'pointer',
-              opacity: confirmando ? 0.7 : 1,
-            }}
-          >
-            {confirmando ? 'Salvando...' : 'Confirmar'}
-          </button>
-          <button
-            onClick={onCancelar}
-            disabled={confirmando}
-            style={{
-              flex: 1, background: '#F3F4F6', color: '#374151', border: 'none',
-              borderRadius: '8px', padding: '10px', fontSize: '14px',
-              fontWeight: '600', cursor: 'pointer',
-            }}
-          >
-            Cancelar
-          </button>
-        </div>
+    <div style={{ maxWidth: '92%' }}>
+      <div style={{
+        background: '#fff', border: '1px solid #E5E7EB', borderRadius: '4px 16px 16px 16px',
+        padding: '10px 14px', fontSize: '14px', color: '#1F2937', lineHeight: '1.5',
+        whiteSpace: 'pre-wrap',
+      }}>
+        {children}
       </div>
     </div>
   )
 }
 
-function Campo({ label, valor, destaque }) {
+function ConfirmacaoCard({ resposta, onConfirmar, onCancelar, executando }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-      <span style={{ fontSize: '13px', color: '#9CA3AF' }}>{label}</span>
-      <span style={{ fontSize: destaque ? '15px' : '13px', fontWeight: destaque ? '700' : '500', color: '#1F2937' }}>{valor}</span>
+    <div style={{ maxWidth: '95%' }}>
+      <div style={{ background: '#fff', border: '2px solid #1D9E75', borderRadius: '12px', overflow: 'hidden' }}>
+        <div style={{ background: '#1D9E75', padding: '10px 14px' }}>
+          <span style={{ color: '#fff', fontWeight: '700', fontSize: '13px' }}>Confirmar ação</span>
+        </div>
+        <div style={{ padding: '12px 14px' }}>
+          <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#374151' }}>{resposta.texto}</p>
+          <ul style={{ margin: '0 0 14px', paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {(resposta.itens || []).map((item, i) => (
+              <li key={i} style={{ fontSize: '13px', color: '#4B5563' }}>{item}</li>
+            ))}
+          </ul>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={onConfirmar}
+              disabled={executando}
+              style={{
+                flex: 1, background: '#1D9E75', color: '#fff', border: 'none',
+                borderRadius: '8px', padding: '10px', fontSize: '14px',
+                fontWeight: '700', cursor: executando ? 'not-allowed' : 'pointer',
+                opacity: executando ? 0.7 : 1,
+              }}
+            >
+              {executando ? 'Salvando...' : 'Confirmar'}
+            </button>
+            <button
+              onClick={onCancelar}
+              disabled={executando}
+              style={{
+                flex: 1, background: '#F3F4F6', color: '#374151', border: 'none',
+                borderRadius: '8px', padding: '10px', fontSize: '14px',
+                fontWeight: '600', cursor: 'pointer',
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
-}
-
-async function confirmarRegistro(tipo, dados) {
-  switch (tipo) {
-    case 'venda':
-      return api.post('/lancamentos/venda', {
-        produto_id: dados.produto_id || null,
-        produto: dados.produto_nome,
-        quantidade: dados.quantidade,
-        preco_unitario: dados.preco_unitario,
-        cliente_id: dados.cliente_id || null,
-        cliente: dados.cliente_nome || null,
-        fiado: dados.fiado || false,
-        data_venda: dados.data,
-        observacao: dados.observacao || null,
-      })
-    case 'compra':
-      return api.post('/lancamentos/compra', {
-        insumo_id: dados.insumo_id,
-        fornecedor_id: dados.fornecedor_id || null,
-        fornecedor: dados.fornecedor_nome || null,
-        quantidade: dados.quantidade,
-        preco_unitario: dados.preco_unitario,
-        data_compra: dados.data,
-        observacao: dados.observacao || null,
-      })
-    case 'receita':
-      return api.post('/lancamentos/receita', {
-        categoria: dados.categoria,
-        valor: dados.valor,
-        descricao: dados.descricao,
-        data_receita: dados.data,
-      })
-    case 'despesa':
-      return api.post('/lancamentos/despesa', {
-        categoria: dados.categoria,
-        valor: dados.valor,
-        descricao: dados.descricao,
-        data_despesa: dados.data,
-      })
-    case 'producao':
-      return api.post('/estoques/produtos/produzir', {
-        produto_id: dados.produto_id,
-        quantidade: dados.quantidade,
-      })
-    default:
-      throw new Error('Tipo desconhecido')
-  }
 }
 
 export default function Assistente() {
   const [texto, setTexto] = useState('')
   const [mensagens, setMensagens] = useState([])
-  const [interpretando, setInterpretando] = useState(false)
-  const [confirmandoIdx, setConfirmandoIdx] = useState(null)
+  const [historico, setHistorico] = useState([])
+  const [carregando, setCarregando] = useState(false)
+  const [executandoIdx, setExecutandoIdx] = useState(null)
   const inputRef = useRef(null)
   const bottomRef = useRef(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [mensagens])
+  }, [mensagens, carregando])
 
   async function enviar() {
     const txt = texto.trim()
-    if (!txt || interpretando) return
+    if (!txt || carregando) return
 
     setTexto('')
-    setMensagens(prev => [...prev, { tipo: 'usuario', texto: txt }])
-    setInterpretando(true)
+    const novaMensagemUsuario = { tipo: 'usuario', texto: txt }
+    setMensagens(prev => [...prev, novaMensagemUsuario])
+    setCarregando(true)
 
     try {
-      const res = await api.post('/ia/interpretar', { texto: txt })
-      setMensagens(prev => [...prev, { tipo: 'ia', resultado: res.data, id: Date.now() }])
-    } catch {
+      const res = await api.post('/ia/chat', { mensagem: txt, historico })
+      const { resposta, historico_atualizado } = res.data
+      setHistorico(historico_atualizado)
+      setMensagens(prev => [...prev, { tipo: 'ia', resposta, id: Date.now() }])
+    } catch (err) {
+      const erro = err.response?.data?.erro || 'Erro ao conectar com o assistente.'
       setMensagens(prev => [...prev, {
         tipo: 'ia',
-        resultado: { tipo: 'desconhecido', mensagem: 'Erro ao processar. Tente novamente.', dados: {} },
+        resposta: { acao: 'mensagem', texto: erro },
         id: Date.now(),
       }])
     } finally {
-      setInterpretando(false)
+      setCarregando(false)
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }
 
-  async function handleConfirmar(idx, resultado) {
-    setConfirmandoIdx(idx)
+  async function handleConfirmar(idx, resposta) {
+    setExecutandoIdx(idx)
     try {
-      await confirmarRegistro(resultado.tipo, resultado.dados)
-      setMensagens(prev => prev.map((m, i) =>
-        i === idx ? { ...m, confirmado: true } : m
-      ))
+      await executarPassos(resposta.passos || [])
+      setMensagens(prev => prev.map((m, i) => i === idx ? { ...m, confirmado: true } : m))
+      // Adiciona mensagem de sucesso no chat
+      setMensagens(prev => [...prev, {
+        tipo: 'ia',
+        resposta: { acao: 'mensagem', texto: 'Tudo registrado com sucesso!' },
+        id: Date.now(),
+      }])
     } catch (err) {
-      const msg = err.response?.data?.erro || 'Erro ao salvar'
-      setMensagens(prev => prev.map((m, i) =>
-        i === idx ? { ...m, erroConfirmar: msg } : m
-      ))
+      const msg = err.response?.data?.erro || 'Erro ao salvar. Tente novamente.'
+      setMensagens(prev => prev.map((m, i) => i === idx ? { ...m, erro: msg } : m))
     } finally {
-      setConfirmandoIdx(null)
+      setExecutandoIdx(null)
     }
   }
 
   function handleCancelar(idx) {
-    setMensagens(prev => prev.map((m, i) =>
-      i === idx ? { ...m, cancelado: true } : m
-    ))
+    setMensagens(prev => prev.map((m, i) => i === idx ? { ...m, cancelado: true } : m))
+    setMensagens(prev => [...prev, {
+      tipo: 'ia',
+      resposta: { acao: 'mensagem', texto: 'Ok, cancelei. Pode me dizer outra coisa.' },
+      id: Date.now(),
+    }])
   }
 
   const exemplos = [
-    'Vendi 50kg de feijão por R$200',
-    'Comprei 2 sacos de ração por R$180',
-    'Recebi R$500 de leite hoje',
-    'Paguei R$150 de conta de luz',
+    'Quero registrar uma venda',
+    'Comprei insumos hoje',
+    'Recebi dinheiro de leite',
+    'Tive uma despesa',
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100svh - 120px)', padding: '0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100svh - 120px)' }}>
 
-      {/* Cabeçalho */}
-      <div style={{ padding: '16px 16px 8px', background: '#fff', borderBottom: '1px solid #E5E7EB' }}>
+      <div style={{ padding: '12px 16px 8px', background: '#fff', borderBottom: '1px solid #E5E7EB' }}>
         <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: '#111827' }}>Assistente</h2>
         <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#9CA3AF' }}>
-          Descreva o que aconteceu e eu registro para você
+          Me diga o que aconteceu e eu registro tudo passo a passo
         </p>
       </div>
 
-      {/* Conversa */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
         {mensagens.length === 0 && (
           <div style={{ textAlign: 'center', paddingTop: '24px' }}>
             <div style={{ fontSize: '40px', marginBottom: '8px' }}>🤖</div>
             <p style={{ color: '#6B7280', fontSize: '14px', margin: '0 0 16px' }}>
-              Olá! Fale o que aconteceu na fazenda e eu registro.
+              Olá! Fale o que aconteceu na fazenda e eu cuido do registro.
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'stretch' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {exemplos.map(ex => (
                 <button
                   key={ex}
@@ -279,73 +219,69 @@ export default function Assistente() {
             )}
 
             {msg.tipo === 'ia' && (
-              <div style={{ maxWidth: '95%' }}>
-                {msg.confirmado ? (
-                  <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: '12px', padding: '12px 16px' }}>
-                    <p style={{ margin: 0, color: '#065F46', fontSize: '14px', fontWeight: '600' }}>
-                      ✓ Registrado com sucesso!
-                    </p>
-                  </div>
-                ) : msg.cancelado ? (
-                  <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '12px 16px' }}>
-                    <p style={{ margin: 0, color: '#9CA3AF', fontSize: '13px' }}>Cancelado.</p>
-                  </div>
-                ) : (
+              <>
+                {msg.resposta.acao === 'mensagem' && (
+                  <BotMsg>{msg.resposta.texto}</BotMsg>
+                )}
+
+                {msg.resposta.acao === 'confirmacao' && (
                   <>
-                    <ResumoCard
-                      resultado={msg.resultado}
-                      onConfirmar={() => handleConfirmar(idx, msg.resultado)}
-                      onCancelar={() => handleCancelar(idx)}
-                      confirmando={confirmandoIdx === idx}
-                    />
-                    {msg.erroConfirmar && (
+                    {msg.confirmado ? (
+                      <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: '12px', padding: '12px 14px' }}>
+                        <p style={{ margin: 0, color: '#065F46', fontSize: '14px', fontWeight: '600' }}>✓ Confirmado!</p>
+                      </div>
+                    ) : msg.cancelado ? (
+                      <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '12px 14px' }}>
+                        <p style={{ margin: 0, color: '#9CA3AF', fontSize: '13px' }}>Cancelado.</p>
+                      </div>
+                    ) : (
+                      <ConfirmacaoCard
+                        resposta={msg.resposta}
+                        onConfirmar={() => handleConfirmar(idx, msg.resposta)}
+                        onCancelar={() => handleCancelar(idx)}
+                        executando={executandoIdx === idx}
+                      />
+                    )}
+                    {msg.erro && (
                       <p style={{ margin: '6px 0 0', color: '#DC2626', fontSize: '12px' }}>
-                        Erro: {msg.erroConfirmar}
+                        Erro: {msg.erro}
                       </p>
                     )}
                   </>
                 )}
-              </div>
+              </>
             )}
           </div>
         ))}
 
-        {interpretando && (
+        {carregando && (
           <div style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '4px 0' }}>
             {[0, 1, 2].map(i => (
               <div key={i} style={{
                 width: '8px', height: '8px', borderRadius: '50%', background: '#9CA3AF',
-                animation: 'bounce 1s infinite',
+                animation: 'pulse 1s infinite',
                 animationDelay: `${i * 0.2}s`,
               }} />
             ))}
-            <style>{`@keyframes bounce { 0%,80%,100%{transform:scale(0.8);opacity:0.5} 40%{transform:scale(1.2);opacity:1} }`}</style>
+            <style>{`@keyframes pulse { 0%,80%,100%{transform:scale(0.8);opacity:0.5} 40%{transform:scale(1.2);opacity:1} }`}</style>
           </div>
         )}
 
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
       <div style={{
-        padding: '10px 12px',
-        background: '#fff',
-        borderTop: '1px solid #E5E7EB',
-        display: 'flex',
-        gap: '8px',
-        alignItems: 'flex-end',
+        padding: '10px 12px', background: '#fff', borderTop: '1px solid #E5E7EB',
+        display: 'flex', gap: '8px', alignItems: 'flex-end',
       }}>
         <textarea
           ref={inputRef}
           value={texto}
           onChange={e => setTexto(e.target.value)}
           onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              enviar()
-            }
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() }
           }}
-          placeholder="O que aconteceu hoje? Ex: vendi 10kg de milho por R$50..."
+          placeholder="Ex: vendi 10kg de feijão por R$50..."
           rows={1}
           style={{
             flex: 1, resize: 'none', border: '1px solid #D1D5DB', borderRadius: '12px',
@@ -355,13 +291,12 @@ export default function Assistente() {
         />
         <button
           onClick={enviar}
-          disabled={!texto.trim() || interpretando}
+          disabled={!texto.trim() || carregando}
           style={{
             background: '#1D9E75', color: '#fff', border: 'none', borderRadius: '12px',
             width: '44px', height: '44px', fontSize: '20px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            opacity: (!texto.trim() || interpretando) ? 0.5 : 1,
-            flexShrink: 0,
+            opacity: (!texto.trim() || carregando) ? 0.5 : 1, flexShrink: 0,
           }}
         >
           ↑
