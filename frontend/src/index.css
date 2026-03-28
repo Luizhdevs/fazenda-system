@@ -31,6 +31,8 @@ body {
   line-height: 1.5;
   height: 100%;
   overflow: hidden;
+  /* Bloqueia pinça/zoom via CSS (complementa o JS) */
+  touch-action: pan-y;
 }
 
 /* Shell fixo: o app ocupa a tela toda e não se move quando o teclado abre */
@@ -41,10 +43,13 @@ body {
 
 input, select, textarea, button {
   font-family: inherit;
-  font-size: inherit;
-  /* iOS: fonte ≥16px evita zoom automático ao focar */
-  font-size: max(1rem, 16px);
   touch-action: manipulation;
+}
+
+/* iOS: força 16px em inputs para evitar auto-zoom ao focar.
+   !important necessário pois as páginas têm fontSize inline (14-15px) */
+input, select, textarea {
+  font-size: 16px !important;
 }
 
 input:focus, select:focus, textarea:focus {
