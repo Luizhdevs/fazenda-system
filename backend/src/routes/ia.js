@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const SYSTEM_PROMPT = `Você é um assistente para um sistema de gestão de fazenda brasileiro. Interprete o texto do usuário e extraia os dados para registrar no sistema.
 
@@ -63,13 +63,17 @@ Insumos: ${JSON.stringify(insumos.rows)}
 Clientes: ${JSON.stringify(clientes.rows)}
 Fornecedores: ${JSON.stringify(fornecedores.rows)}`;
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: `Contexto:\n${contexto}\n\nTexto: "${texto}"` },
+      ],
+      temperature: 0.1,
+      max_tokens: 1024,
+    });
 
-    const response = await model.generateContent(
-      `${SYSTEM_PROMPT}\n\nContexto:\n${contexto}\n\nTexto: "${texto}"`
-    );
-
-    const textContent = response.response.text().replace(/```json\n?|```/g, '').trim();
+    const textContent = response.choices[0].message.content.replace(/```json\n?|```/g, '').trim();
 
     let resultado;
     try {
