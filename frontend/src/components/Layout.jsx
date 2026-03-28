@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 
 const NAV_BASE = [
   { to: '/painel',       icon: '🏠', label: 'Início'        },
+  { to: '/assistente',   icon: '🤖', label: 'Assistente'    },
   { to: '/novo',         icon: '✏️', label: 'Registrar'     },
   { to: '/estoque',      icon: '📦', label: 'Estoque'       },
   { to: '/produtos',     icon: '🌾', label: 'Produtos'      },

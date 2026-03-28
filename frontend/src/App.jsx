@@ -18,6 +18,7 @@ import Relatorio from './pages/Relatorio'
 import Admin from './pages/Admin'
 import Funcionarios from './pages/Funcionarios'
 import FuncionarioDetalhe from './pages/FuncionarioDetalhe'
+import Assistente from './pages/Assistente'
 
 // Guard para /selecionar-fazenda: só acessível se logado mas sem fazenda selecionada
 function SelecionarFazendaGuard() {
@@ -55,6 +56,7 @@ function App() {
         <Route path="relatorio" element={<Relatorio />} />
         <Route path="funcionarios" element={<Funcionarios />} />
         <Route path="funcionarios/:id" element={<FuncionarioDetalhe />} />
+        <Route path="assistente" element={<Assistente />} />
         <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
       </Route>
     </Routes>

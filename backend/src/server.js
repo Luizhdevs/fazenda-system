@@ -24,6 +24,7 @@ app.use('/api/clientes',   comFazenda, require('./routes/clientes'));
 app.use('/api/insumos',    comFazenda, require('./routes/insumos'));
 app.use('/api/fornecedores',  comFazenda, require('./routes/fornecedores'));
 app.use('/api/funcionarios', comFazenda, require('./routes/funcionarios'));
+app.use('/api/ia',          comFazenda, require('./routes/ia'));
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
