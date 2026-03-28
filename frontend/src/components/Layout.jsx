@@ -35,7 +35,7 @@ export default function Layout() {
   }
 
   return (
-    <div style={{ maxWidth: '480px', margin: '0 auto', minHeight: '100svh', display: 'flex', flexDirection: 'column', background: '#F4F6F4', position: 'relative' }}>
+    <div style={{ maxWidth: '480px', margin: '0 auto', height: '100dvh', display: 'flex', flexDirection: 'column', background: '#F4F6F4', position: 'relative', overflow: 'hidden' }}>
 
       {/* Barra superior */}
       <div style={{ padding: '10px 16px', background: '#fff', borderBottom: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
