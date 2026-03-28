@@ -34,6 +34,9 @@ body {
 input, select, textarea, button {
   font-family: inherit;
   font-size: inherit;
+  /* iOS: fonte ≥16px evita zoom automático ao focar */
+  font-size: max(1rem, 16px);
+  touch-action: manipulation;
 }
 
 input:focus, select:focus, textarea:focus {
