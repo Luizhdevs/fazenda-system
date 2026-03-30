@@ -4,6 +4,17 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router')) {
+            return 'vendor-react'
+          }
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
