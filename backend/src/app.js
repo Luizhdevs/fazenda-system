@@ -18,6 +18,9 @@ if (!JWT_SECRET || JWT_SECRET.length < 32 || JWT_SECRET.includes('local_dev') ||
 
 const app = express();
 
+// Confia no proxy reverso (necessário no Render/Heroku para rate limiting correto)
+app.set('trust proxy', 1);
+
 // Headers de segurança HTTP
 app.use(helmet());
 
