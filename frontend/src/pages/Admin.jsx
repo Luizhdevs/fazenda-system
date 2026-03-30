@@ -5,8 +5,18 @@ import api from '../services/api'
 const PAPEL_LABEL = { admin: 'Admin', membro: 'Membro' }
 const PAPEL_COR = { admin: '#1D9E75', membro: '#6B7280' }
 
+function lerSuperadminDoToken() {
+  try {
+    const token = localStorage.getItem('fazenda_token')
+    if (!token) return false
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return !!payload.superadmin
+  } catch { return false }
+}
+
 export default function Admin() {
-  const { fazenda, usuario, superadmin } = useAuth()
+  const { fazenda, usuario } = useAuth()
+  const superadmin = lerSuperadminDoToken()
   const [aba, setAba] = useState('membros')
 
   return (

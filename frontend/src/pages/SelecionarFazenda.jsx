@@ -6,7 +6,17 @@ import api from '../services/api'
 const verde = '#1D9E75'
 
 export default function SelecionarFazenda() {
-  const { usuario, fazendas, selecionarFazenda, entrar, sair, superadmin } = useAuth()
+  const { usuario, fazendas, selecionarFazenda, entrar, sair } = useAuth()
+
+  function lerSuperadminDoToken() {
+    try {
+      const token = localStorage.getItem('fazenda_token')
+      if (!token) return false
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      return !!payload.superadmin
+    } catch { return false }
+  }
+  const superadmin = lerSuperadminDoToken()
   const navigate = useNavigate()
 
   const [criando, setCriando] = useState(false)
