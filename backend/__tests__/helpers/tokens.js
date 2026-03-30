@@ -9,7 +9,15 @@ process.env.DATABASE_URL = 'postgresql://fake';
 
 function tokenBase(overrides = {}) {
   return jwt.sign(
-    { id: 1, email: 'test@fazenda.com', nome: 'Teste', avatar_url: null, ...overrides },
+    { id: 1, email: 'test@fazenda.com', nome: 'Teste', avatar_url: null, superadmin: false, ...overrides },
+    SECRET,
+    { expiresIn: '1h' }
+  );
+}
+
+function tokenSuperAdmin(overrides = {}) {
+  return jwt.sign(
+    { id: 1, email: 'test@fazenda.com', nome: 'Teste', avatar_url: null, superadmin: true, ...overrides },
     SECRET,
     { expiresIn: '1h' }
   );
@@ -32,4 +40,4 @@ function tokenComFazenda(overrides = {}) {
   );
 }
 
-module.exports = { tokenBase, tokenComFazenda, SECRET };
+module.exports = { tokenBase, tokenComFazenda, tokenSuperAdmin, SECRET };

@@ -76,6 +76,7 @@ app.use('/api/insumos',    limiterGeral, comFazenda, require('./routes/insumos')
 app.use('/api/fornecedores',  limiterGeral, comFazenda, require('./routes/fornecedores'));
 app.use('/api/funcionarios', limiterGeral, comFazenda, require('./routes/funcionarios'));
 app.use('/api/ia',          limiterGeral, comFazenda, require('./routes/ia'));
+app.use('/api/admin',       limiterGeral, require('./routes/admin'));
 
 // Tratamento de erros — nunca vazar stack trace em produção
 app.use((err, req, res, next) => {

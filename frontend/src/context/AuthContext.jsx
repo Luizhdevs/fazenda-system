@@ -7,6 +7,7 @@ export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null)
   const [fazenda, setFazenda] = useState(null)   // fazenda atualmente selecionada
   const [fazendas, setFazendas] = useState([])   // lista de fazendas do usuário
+  const [superadmin, setSuperadmin] = useState(false)
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
@@ -17,6 +18,7 @@ export function AuthProvider({ children }) {
         .then(res => {
           setUsuario(res.data)
           setFazendas(res.data.fazendas || [])
+          setSuperadmin(!!res.data.superadmin)
           // Se o token já tem fazenda_id, recupera do payload
           const payload = parseJwt(token)
           if (payload?.fazenda_id) {
@@ -38,6 +40,7 @@ export function AuthProvider({ children }) {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`
     setUsuario(dadosUsuario)
     setFazendas(listaDeFazendas || [])
+    setSuperadmin(!!dadosUsuario.superadmin)
     // Se o token já inclui fazenda_id (ex: setup retorna direto com fazenda)
     const payload = parseJwt(token)
     if (payload?.fazenda_id) {
@@ -74,10 +77,11 @@ export function AuthProvider({ children }) {
     setUsuario(null)
     setFazenda(null)
     setFazendas([])
+    setSuperadmin(false)
   }
 
   return (
-    <AuthContext.Provider value={{ usuario, fazenda, fazendas, entrar, selecionarFazenda, trocarFazenda, sair, carregando }}>
+    <AuthContext.Provider value={{ usuario, fazenda, fazendas, superadmin, entrar, selecionarFazenda, trocarFazenda, sair, carregando }}>
       {children}
     </AuthContext.Provider>
   )

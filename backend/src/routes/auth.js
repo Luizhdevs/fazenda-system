@@ -11,7 +11,7 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Token base (sem fazenda) — usado antes de selecionar fazenda
 function gerarTokenBase(usuario) {
   return jwt.sign(
-    { id: usuario.id, email: usuario.email, nome: usuario.nome, avatar_url: usuario.avatar_url },
+    { id: usuario.id, email: usuario.email, nome: usuario.nome, avatar_url: usuario.avatar_url, superadmin: !!usuario.superadmin },
     process.env.JWT_SECRET,
     { expiresIn: '30d' }
   );
@@ -25,6 +25,7 @@ function gerarTokenFazenda(usuario, fazenda, papel) {
       email: usuario.email,
       nome: usuario.nome,
       avatar_url: usuario.avatar_url,
+      superadmin: !!usuario.superadmin,
       fazenda_id: fazenda.id,
       fazenda_nome: fazenda.nome,
       papel,
@@ -252,7 +253,7 @@ router.post('/selecionar-fazenda', autenticar, async (req, res) => {
 router.get('/me', autenticar, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, nome, email, avatar_url, criado_em, ultimo_acesso FROM usuarios WHERE id = $1',
+      'SELECT id, nome, email, avatar_url, superadmin, criado_em, ultimo_acesso FROM usuarios WHERE id = $1',
       [req.usuario.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado' });

@@ -24,8 +24,10 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/fazendas — cria nova fazenda e torna o usuário admin
+// POST /api/fazendas — cria nova fazenda e torna o usuário admin (somente superadmin)
 router.post('/', async (req, res) => {
+  if (!req.usuario.superadmin) return res.status(403).json({ error: 'Somente o superadmin pode criar novas fazendas' });
+
   const { nome, descricao } = req.body;
   if (!nome) return res.status(400).json({ error: 'Nome da fazenda é obrigatório' });
 

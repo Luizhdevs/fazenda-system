@@ -1,11 +1,12 @@
 const request = require('supertest');
 const { mockQuery, mockConnect, mockClient } = require('./helpers/mockPool');
-const { tokenBase, tokenComFazenda } = require('./helpers/tokens');
+const { tokenBase, tokenComFazenda, tokenSuperAdmin } = require('./helpers/tokens');
 
 const app = require('../src/app');
 
-const AUTH_BASE     = { Authorization: `Bearer ${tokenBase()}` };
-const AUTH_FAZENDA  = { Authorization: `Bearer ${tokenComFazenda()}` };
+const AUTH_BASE       = { Authorization: `Bearer ${tokenBase()}` };
+const AUTH_FAZENDA    = { Authorization: `Bearer ${tokenComFazenda()}` };
+const AUTH_SUPERADMIN = { Authorization: `Bearer ${tokenSuperAdmin()}` };
 
 beforeEach(() => {
   jest.resetAllMocks();
@@ -36,20 +37,26 @@ describe('GET /api/fazendas', () => {
 // ─── POST /api/fazendas ───────────────────────────────────────────────────────
 
 describe('POST /api/fazendas', () => {
-  test('retorna 400 quando nome não informado', async () => {
-    const res = await request(app).post('/api/fazendas').set(AUTH_BASE).send({});
+  test('retorna 403 quando usuário não é superadmin', async () => {
+    const res = await request(app).post('/api/fazendas').set(AUTH_BASE).send({ nome: 'Nova Fazenda' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/superadmin/i);
+  });
+
+  test('retorna 400 quando nome não informado (superadmin)', async () => {
+    const res = await request(app).post('/api/fazendas').set(AUTH_SUPERADMIN).send({});
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/nome/i);
   });
 
-  test('cria fazenda e vincula usuário como admin', async () => {
+  test('cria fazenda e vincula superadmin como admin', async () => {
     mockClient.query
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
       .mockResolvedValueOnce({ rows: [{ id: 20, nome: 'Nova Fazenda' }] }) // INSERT fazendas
       .mockResolvedValueOnce({ rows: [] }) // INSERT usuario_fazendas
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
-    const res = await request(app).post('/api/fazendas').set(AUTH_BASE).send({ nome: 'Nova Fazenda' });
+    const res = await request(app).post('/api/fazendas').set(AUTH_SUPERADMIN).send({ nome: 'Nova Fazenda' });
     expect(res.status).toBe(201);
     expect(res.body.nome).toBe('Nova Fazenda');
     expect(res.body.papel).toBe('admin');
