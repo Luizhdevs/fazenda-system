@@ -26,6 +26,9 @@ export default function Admin() {
         <p style={{ fontSize: '12px', color: '#6B7280', margin: '4px 0 0' }}>
           Fazenda: <strong>{fazenda?.nome}</strong>
         </p>
+        <p style={{ fontSize: '11px', color: superadmin ? '#1D9E75' : '#EF4444', margin: '4px 0 0' }}>
+          superadmin: {String(superadmin)} · v2
+        </p>
       </div>
 
       {/* Abas */}
