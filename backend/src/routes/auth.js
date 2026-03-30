@@ -240,7 +240,7 @@ router.post('/selecionar-fazenda', autenticar, async (req, res) => {
     if (rows.length === 0) return res.status(403).json({ error: 'Acesso negado a esta fazenda' });
 
     const fazenda = rows[0];
-    const usuario = { id: req.usuario.id, email: req.usuario.email, nome: req.usuario.nome, avatar_url: req.usuario.avatar_url };
+    const usuario = { id: req.usuario.id, email: req.usuario.email, nome: req.usuario.nome, avatar_url: req.usuario.avatar_url, superadmin: !!req.usuario.superadmin };
     const token = gerarTokenFazenda(usuario, fazenda, fazenda.papel);
 
     res.json({ token, fazenda: { id: fazenda.id, nome: fazenda.nome, papel: fazenda.papel } });
