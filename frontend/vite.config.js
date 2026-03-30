@@ -40,6 +40,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
         // Arquivos estáticos que o SW vai pré-cachear
         globPatterns: ['**/*.{js,css,html,svg,ico,woff,woff2}'],
         // Caching de respostas da API (offline queries)

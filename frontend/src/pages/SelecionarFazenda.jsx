@@ -6,7 +6,7 @@ import api from '../services/api'
 const verde = '#1D9E75'
 
 export default function SelecionarFazenda() {
-  const { usuario, fazendas, selecionarFazenda, entrar, sair } = useAuth()
+  const { usuario, fazendas, selecionarFazenda, entrar, sair, superadmin } = useAuth()
   const navigate = useNavigate()
 
   const [criando, setCriando] = useState(false)
@@ -99,7 +99,7 @@ export default function SelecionarFazenda() {
             </div>
           )}
 
-          {/* Formulário de criar fazenda */}
+          {/* Formulário de criar fazenda — só superadmin pode criar */}
           {criando ? (
             <form onSubmit={handleCriarFazenda} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#111827' }}>Nova Fazenda</h3>
@@ -136,12 +136,14 @@ export default function SelecionarFazenda() {
           ) : (
             <>
               {erro && <div style={{ ...erroStyle, marginBottom: '12px' }}>{erro}</div>}
-              <button
-                onClick={() => { setCriando(true); setErro('') }}
-                style={{ ...btnSecundario, width: '100%' }}
-              >
-                + Criar nova fazenda
-              </button>
+              {superadmin && (
+                <button
+                  onClick={() => { setCriando(true); setErro('') }}
+                  style={{ ...btnSecundario, width: '100%' }}
+                >
+                  + Criar nova fazenda
+                </button>
+              )}
             </>
           )}
         </div>
