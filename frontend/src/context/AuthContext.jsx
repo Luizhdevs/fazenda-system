@@ -53,6 +53,8 @@ export function AuthProvider({ children }) {
     const { token, fazenda: f } = res.data
     localStorage.setItem('fazenda_token', token)
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    const payload = parseJwt(token)
+    setSuperadmin(!!payload?.superadmin)
     setFazenda(f)
     return f
   }
