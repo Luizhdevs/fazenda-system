@@ -40,9 +40,9 @@ export function AuthProvider({ children }) {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`
     setUsuario(dadosUsuario)
     setFazendas(listaDeFazendas || [])
-    setSuperadmin(!!dadosUsuario.superadmin)
     // Se o token já inclui fazenda_id (ex: setup retorna direto com fazenda)
     const payload = parseJwt(token)
+    setSuperadmin(!!payload?.superadmin)
     if (payload?.fazenda_id) {
       setFazenda({ id: payload.fazenda_id, nome: payload.fazenda_nome, papel: payload.papel })
     }
